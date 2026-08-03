@@ -1,0 +1,296 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useGame } from '../store/useGame.js';
+import { TEAMS_BY_ID } from '../data/teams.js';
+import { formatDate, addDays } from '../engine/schedule.js';
+import { TeamBadge, TeamName } from './common.jsx';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+function monthOf(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+export default function ScheduleView() {
+  const userTeamId = useGame((s) => s.userTeamId);
+  const games = useGame((s) => s.games);
+  const currentDate = useGame((s) => s.currentDate);
+  const simulating = useGame((s) => s.simulating);
+  const phase = useGame((s) => s.phase);
+  const simulateTo = useGame((s) => s.simulateTo);
+  const stopSim = useGame((s) => s.stopSim);
+
+  const [visible, setVisible] = useState(monthOf(currentDate));
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [detailDate, setDetailDate] = useState(currentDate);
+
+  // Follow the current date's month while simulating.
+  useEffect(() => {
+    setVisible(monthOf(currentDate));
+    setDetailDate(currentDate);
+  }, [currentDate]);
+
+  // Map of the user's games keyed by date.
+  const userGamesByDate = useMemo(() => {
+    const m = {};
+    Object.values(games).forEach((g) => {
+      if (g.homeId === userTeamId || g.awayId === userTeamId) m[g.date] = g;
+    });
+    return m;
+  }, [games, userTeamId]);
+
+  const userGames = useMemo(
+    () => Object.values(userGamesByDate).sort((a, b) => a.date.localeCompare(b.date)),
+    [userGamesByDate]
+  );
+
+  const nextGame = userGames.find((g) => !g.played && g.date > currentDate);
+
+  const handleSim = () => {
+    const target = selectedDate && selectedDate > currentDate ? selectedDate : nextGame?.date;
+    if (target) simulateTo(addDays(target, 0));
+    setSelectedDate(null);
+  };
+
+  return (
+    <div className="schedule">
+      <div className="schedule__main">
+        <CalendarToolbar
+          visible={visible}
+          setVisible={setVisible}
+          simulating={simulating}
+          onSim={handleSim}
+          onStop={stopSim}
+          onSimWeek={() => simulateTo(addDays(currentDate, 7))}
+          onSimNext={() => nextGame && simulateTo(nextGame.date)}
+          onSimEnd={() => simulateTo('2026-12-31')}
+          hasNext={!!nextGame}
+          selectedDate={selectedDate}
+          phase={phase}
+        />
+        <Calendar
+          visible={visible}
+          currentDate={currentDate}
+          userTeamId={userTeamId}
+          userGamesByDate={userGamesByDate}
+          selectedDate={selectedDate}
+          detailDate={detailDate}
+          onSelect={(date, hasFutureGame) => {
+            setDetailDate(date);
+            if (date > currentDate) setSelectedDate(date);
+          }}
+        />
+      </div>
+
+      <SidePanel
+        userTeamId={userTeamId}
+        userGames={userGames}
+        detailDate={detailDate}
+        userGamesByDate={userGamesByDate}
+        currentDate={currentDate}
+      />
+    </div>
+  );
+}
+
+function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSimWeek, onSimNext, onSimEnd, hasNext, selectedDate, phase }) {
+  const step = (delta) => {
+    let m = visible.month + delta;
+    let y = visible.year;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setVisible({ year: y, month: m });
+  };
+  return (
+    <div className="cal-toolbar">
+      <div className="cal-toolbar__month">
+        <button className="btn btn--icon" onClick={() => step(-1)}>‹</button>
+        <h2>{MONTHS[visible.month]} {visible.year}</h2>
+        <button className="btn btn--icon" onClick={() => step(1)}>›</button>
+      </div>
+      <div className="cal-toolbar__actions">
+        {simulating ? (
+          <button className="btn btn--danger" onClick={onStop}>■ Stop</button>
+        ) : (
+          <>
+            <button className="btn" onClick={onSimWeek}>+1 Week</button>
+            <button className="btn" onClick={onSimNext} disabled={!hasNext}>Next Game</button>
+            <button className="btn" onClick={onSimEnd}>Sim to End</button>
+            <button className="btn btn--primary" onClick={onSim} disabled={!hasNext && !selectedDate}>
+              ▶ {selectedDate ? `Sim to ${formatDate(selectedDate)}` : 'Simulate'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedDate, detailDate, onSelect }) {
+  const { year, month } = visible;
+  const first = new Date(year, month, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    cells.push(iso);
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <div className="calendar">
+      <div className="calendar__dow">
+        {DOW.map((d, i) => <div key={i} className="calendar__dowcell">{d}</div>)}
+      </div>
+      <div className="calendar__grid">
+        {cells.map((iso, i) => {
+          if (!iso) return <div key={i} className="cal-cell cal-cell--empty" />;
+          const g = userGamesByDate[iso];
+          const isCurrent = iso === currentDate;
+          const isSelected = iso === selectedDate;
+          const isDetail = iso === detailDate;
+          const day = Number(iso.slice(8));
+          return (
+            <button
+              key={i}
+              className={[
+                'cal-cell',
+                isCurrent && 'is-current',
+                isSelected && 'is-selected',
+                isDetail && !isCurrent && 'is-detail',
+                g && 'has-game',
+              ].filter(Boolean).join(' ')}
+              onClick={() => onSelect(iso, !!g && !g.played)}
+            >
+              <span className="cal-cell__day">{day}</span>
+              {g && <GameChip game={g} userTeamId={userTeamId} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GameChip({ game, userTeamId }) {
+  const isHome = game.homeId === userTeamId;
+  const oppId = isHome ? game.awayId : game.homeId;
+  const prefix = game.neutral ? 'vs' : isHome ? 'vs' : '@';
+
+  if (game.played) {
+    const r = game.result;
+    const my = isHome ? r.homePts : r.awayPts;
+    const their = isHome ? r.awayPts : r.homePts;
+    const won = r.winnerId === userTeamId;
+    return (
+      <span className={`chip ${won ? 'chip--w' : 'chip--l'}`}>
+        <span className="chip__wl">{won ? 'W' : 'L'}</span>
+        <span className="chip__score">{my}-{their}</span>
+        {oppId && <TeamBadge teamId={oppId} size={18} />}
+      </span>
+    );
+  }
+  return (
+    <span className="chip chip--upcoming">
+      <span className="chip__prefix">{prefix}</span>
+      {oppId ? <TeamBadge teamId={oppId} size={18} /> : <span className="muted">TBD</span>}
+    </span>
+  );
+}
+
+function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, currentDate }) {
+  const detailGame = userGamesByDate[detailDate];
+  const recent = userGames.filter((g) => g.played).slice(-6).reverse();
+  const upcoming = userGames.filter((g) => !g.played).slice(0, 6);
+
+  return (
+    <aside className="sidepanel">
+      {detailGame && detailGame.played && (
+        <BoxScore game={detailGame} userTeamId={userTeamId} />
+      )}
+
+      <section className="panel">
+        <h3 className="panel__title">Upcoming</h3>
+        {upcoming.length === 0 && <p className="muted">No games scheduled.</p>}
+        {upcoming.map((g) => (
+          <GameRow key={g.id} game={g} userTeamId={userTeamId} />
+        ))}
+      </section>
+
+      <section className="panel">
+        <h3 className="panel__title">Recent Results</h3>
+        {recent.length === 0 && <p className="muted">Season hasn't tipped off yet.</p>}
+        {recent.map((g) => (
+          <GameRow key={g.id} game={g} userTeamId={userTeamId} />
+        ))}
+      </section>
+    </aside>
+  );
+}
+
+function GameRow({ game, userTeamId }) {
+  const isHome = game.homeId === userTeamId;
+  const oppId = isHome ? game.awayId : game.homeId;
+  const won = game.played && game.result.winnerId === userTeamId;
+  return (
+    <div className="gamerow">
+      <span className="gamerow__date">{formatDate(game.date)}</span>
+      <span className="gamerow__loc">{game.neutral ? 'N' : isHome ? 'vs' : '@'}</span>
+      {oppId ? <TeamBadge teamId={oppId} size={22} /> : <span className="muted">TBD</span>}
+      <span className="gamerow__opp"><TeamName teamId={oppId} /></span>
+      {game.played ? (
+        <span className={`pill ${won ? 'pill--w' : 'pill--l'}`}>
+          {won ? 'W' : 'L'} {isHome ? game.result.homePts : game.result.awayPts}-{isHome ? game.result.awayPts : game.result.homePts}
+        </span>
+      ) : (
+        <span className="pill pill--muted">{game.phase === 'REGULAR' ? '' : 'Tourney'}</span>
+      )}
+    </div>
+  );
+}
+
+function BoxScore({ game, userTeamId }) {
+  const isHome = game.homeId === userTeamId;
+  const oppId = isHome ? game.awayId : game.homeId;
+  const box = isHome ? game.result.homeBox : game.result.awayBox;
+  const my = isHome ? game.result.homePts : game.result.awayPts;
+  const their = isHome ? game.result.awayPts : game.result.homePts;
+  const won = game.result.winnerId === userTeamId;
+
+  const ts = useGame((s) => s.teamStates[userTeamId]);
+  const byId = Object.fromEntries(ts.players.map((p) => [p.id, p]));
+  const rows = [...box].sort((a, b) => b.pts - a.pts).filter((b) => b.min > 0);
+
+  return (
+    <section className="panel boxscore">
+      <div className="boxscore__head">
+        <span className={`pill ${won ? 'pill--w' : 'pill--l'}`}>{won ? 'WIN' : 'LOSS'}</span>
+        <span className="boxscore__score">{my}–{their}</span>
+        <span className="boxscore__opp">{game.neutral ? 'vs' : isHome ? 'vs' : '@'} <TeamName teamId={oppId} /></span>
+      </div>
+      <table className="statgrid">
+        <thead>
+          <tr><th>Player</th><th>MIN</th><th>PTS</th><th>AST</th><th>REB</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((b) => {
+            const p = byId[b.playerId];
+            return (
+              <tr key={b.playerId}>
+                <td className="statgrid__name">{p?.name} {p?.isStar && <span className="star">★</span>}</td>
+                <td>{b.min}</td>
+                <td className="strong">{b.pts}</td>
+                <td>{b.ast}</td>
+                <td>{b.reb}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
