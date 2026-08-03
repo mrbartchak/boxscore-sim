@@ -1,7 +1,7 @@
 // Ranking computations for teams (overall + per conference) and players (league).
 
 import { TEAMS_BY_ID } from '../data/teams.js';
-import { playerAverages } from './players.js';
+import { seasonAverages } from './players.js';
 
 // A blended power rating: win%, scoring margin, and prestige as a light
 // strength-of-schedule proxy (helps compare across conferences early on).
@@ -44,11 +44,11 @@ export function leaderboard(teamStates, stat, limit = 25) {
   const rows = [];
   Object.values(teamStates).forEach((ts) => {
     ts.players.forEach((p) => {
-      const avg = playerAverages(p);
+      const avg = seasonAverages(p);
       rows.push({
         player: p,
         teamId: ts.teamId,
-        value: avg[stat],
+        value: avg ? avg[stat] : 0,
         gp: p.gp,
       });
     });

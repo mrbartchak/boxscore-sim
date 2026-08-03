@@ -70,7 +70,32 @@ function generatePlayer(position, teamMeanOverall, isStar) {
     pts: 0,
     ast: 0,
     reb: 0,
+    // Career (prior seasons) per-game averages; 0 for freshmen.
+    careerGp: 0,
+    careerPpg: 0,
+    careerApg: 0,
+    careerReb: 0,
   };
+}
+
+const PRIOR_SEASONS = { FR: 0, SO: 1, JR: 2, SR: 3 };
+
+// Give returning players a plausible career history (younger seasons = lower).
+function assignCareer(p) {
+  const seasons = PRIOR_SEASONS[p.class];
+  if (seasons === 0) return;
+  p.careerGp = seasons * randInt(28, 33);
+  const dev = 0.72 + seasons * 0.06; // developed less earlier in their career
+  p.careerPpg = round1(clamp(p.projPpg * dev * (0.85 + rand() * 0.3), 0.4, 32));
+  p.careerApg = round1(clamp(p.projApg * dev * (0.8 + rand() * 0.4), 0, 11));
+  p.careerReb = round1(clamp(p.projReb * dev * (0.85 + rand() * 0.3), 0.3, 15));
+}
+
+// Scale a projected stat across the roster so the team totals are realistic.
+function scaleStat(players, key, total) {
+  const sum = players.reduce((a, p) => a + p[key], 0) || 1;
+  const f = total / sum;
+  players.forEach((p) => (p[key] = round1(p[key] * f)));
 }
 
 export function generateRoster(team) {
@@ -82,8 +107,15 @@ export function generateRoster(team) {
   const star = players[0];
   star.isStar = true;
   star.overall = clamp(star.overall + 4, 35, 99);
-  star.projPpg = round1(star.projPpg * 1.2 + 2);
+  star.projPpg *= 1.3; // heavier scoring share before normalization
 
+  // Normalize projected production so the roster sums to a realistic team line.
+  // (Everyone's points must add up to what the team actually scores.)
+  scaleStat(players, 'projPpg', clamp(gaussian(70 + team.prestige * 0.05, 3), 60, 80));
+  scaleStat(players, 'projApg', clamp(gaussian(14, 1.2), 10, 18));
+  scaleStat(players, 'projReb', clamp(gaussian(34, 1.8), 28, 40));
+
+  players.forEach(assignCareer);
   return players;
 }
 
@@ -97,8 +129,8 @@ export function overallTier(overall) {
   return 'base';
 }
 
-// Season averages for display; falls back to projections before games played.
-export function playerAverages(p) {
+// Current-season averages, or null before any games have been played.
+export function seasonAverages(p) {
   if (p.gp > 0) {
     return {
       ppg: round1(p.pts / p.gp),
@@ -107,5 +139,13 @@ export function playerAverages(p) {
       mpg: round1(p.min / p.gp),
     };
   }
-  return { ppg: p.projPpg, apg: p.projApg, rpg: p.projReb, mpg: 0 };
+  return null;
+}
+
+// Career (prior-season) averages, or null for freshmen with no history.
+export function careerAverages(p) {
+  if (p.careerGp > 0) {
+    return { ppg: p.careerPpg, apg: p.careerApg, rpg: p.careerReb };
+  }
+  return null;
 }

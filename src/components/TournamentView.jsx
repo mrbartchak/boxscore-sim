@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { rankTeams, conferenceStandings } from '../engine/rankings.js';
-import { playerAverages } from '../engine/players.js';
+import { seasonAverages } from '../engine/players.js';
 import { NATIONAL_ROUND_NAMES, CONF_ROUND_NAMES, REGIONS } from '../engine/tournament.js';
 import { TeamBadge, TeamName } from './common.jsx';
 
@@ -44,7 +44,7 @@ function SeasonOverview() {
   const confFinish = conferenceStandings(teamStates, conf).findIndex((x) => x.teamId === userTeamId) + 1;
   const natRank = rankTeams(teamStates).find((x) => x.ts.teamId === userTeamId)?.rank;
   const scorer = [...ts.players]
-    .map((p) => ({ p, ppg: playerAverages(p).ppg }))
+    .map((p) => ({ p, ppg: seasonAverages(p)?.ppg ?? 0 }))
     .sort((a, b) => b.ppg - a.ppg)[0];
 
   return (

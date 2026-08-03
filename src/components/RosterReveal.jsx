@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
+import { careerAverages, overallTier } from '../engine/players.js';
 import { TeamBadge, contrastColor } from './common.jsx';
 import PlayerCard from './PlayerCard.jsx';
 
-// Full-screen reveal shown right after a team is chosen: the program (with a
-// short suspense beat if the pick was random), then the roster cards stagger in.
+// Higher tiers dwell longer so the reveal builds to the best player.
+const TIER_DELAY = { base: 620, silver: 760, gold: 920, diamond: 1150, rainbow: 1500 };
+
 export default function RosterReveal() {
   const userTeamId = useGame((s) => s.userTeamId);
   const ts = useGame((s) => s.teamStates[s.userTeamId]);
@@ -13,8 +15,14 @@ export default function RosterReveal() {
   const dismiss = useGame((s) => s.dismissReveal);
 
   const team = TEAMS_BY_ID[userTeamId];
-  // With a random pick, hold on the "?" for a beat before revealing the team.
+  const byId = Object.fromEntries(ts.players.map((p) => [p.id, p]));
+  // Starters, weakest first, so the top tier lands last with the biggest pop.
+  const starters = ts.rotation.starters
+    .map((s) => byId[s.id])
+    .sort((a, b) => a.overall - b.overall);
+
   const [teamShown, setTeamShown] = useState(!revealRandom);
+  const [revealed, setRevealed] = useState(0);
 
   useEffect(() => {
     if (!revealRandom) return;
@@ -22,7 +30,14 @@ export default function RosterReveal() {
     return () => clearTimeout(t);
   }, [revealRandom]);
 
-  const players = [...ts.players].sort((a, b) => b.overall - a.overall);
+  useEffect(() => {
+    if (!teamShown || revealed >= starters.length) return;
+    const nextTier = overallTier(starters[revealed].overall);
+    const t = setTimeout(() => setRevealed((r) => r + 1), TIER_DELAY[nextTier]);
+    return () => clearTimeout(t);
+  }, [teamShown, revealed, starters]);
+
+  const allShown = revealed >= starters.length;
 
   return (
     <div className="reveal" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
@@ -44,15 +59,24 @@ export default function RosterReveal() {
 
         {teamShown && (
           <>
-            <div className="reveal__rostertitle">Meet your roster</div>
+            <div className="reveal__rostertitle">Your Starting Five</div>
             <div className="reveal__cards">
-              {players.map((p, i) => (
-                <div key={p.id} className="reveal__cardwrap" style={{ animationDelay: `${0.15 + i * 0.09}s` }}>
-                  <PlayerCard player={p} isStar={p.id === ts.rotation.starId} />
-                </div>
-              ))}
+              {starters.map((p, i) => {
+                if (i >= revealed) return <div key={p.id} className="reveal__placeholder" />;
+                const tier = overallTier(p.overall);
+                return (
+                  <div key={p.id} className={`reveal__cardwrap reveal-anim--${tier}`}>
+                    <PlayerCard player={p} layout="tile" stats={careerAverages(p)} isStar={p.id === ts.rotation.starId} />
+                  </div>
+                );
+              })}
             </div>
-            <button className="btn btn--primary btn--lg reveal__start" onClick={dismiss}>
+            <div className="reveal__careernote">Career averages · freshmen have no prior stats</div>
+            <button
+              className="btn btn--primary btn--lg reveal__start"
+              onClick={dismiss}
+              style={{ opacity: allShown ? 1 : 0.35, pointerEvents: allShown ? 'auto' : 'none' }}
+            >
               Start Season →
             </button>
           </>

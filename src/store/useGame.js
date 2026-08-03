@@ -133,9 +133,11 @@ export const useGame = create((set, get) => ({
     }),
 
   // ---- Simulation ----
-  // Run the day-by-day loop on a timer until `shouldStop(state)` is true.
+  // Run the day-by-day loop on a timer until `shouldStop(state)` is true. The
+  // loop also stops at any phase boundary so the postseason never auto-runs.
   _runSim: (shouldStop) => {
     if (get().simulating) return;
+    const startPhase = get().phase;
     set({ simulating: true });
     const tick = () => {
       if (!get().simulating) return;
@@ -144,11 +146,17 @@ export const useGame = create((set, get) => ({
       const anyPending = Object.values(after.games).some(
         (g) => !g.played && g.homeId && g.awayId
       );
-      if (after.phase === 'DONE' || !anyPending || shouldStop(after)) {
+      const phaseChanged = after.phase !== startPhase;
+      if (after.phase === 'DONE' || !anyPending || phaseChanged || shouldStop(after)) {
         set({ simulating: false });
         return;
       }
-      setTimeout(tick, SIM_SPEED_MS);
+      // Brief pause on days the user's own team plays, so results register.
+      const userPlayed = (after.gameIdsByDate[after.currentDate] || []).some((id) => {
+        const g = after.games[id];
+        return g && g.played && (g.homeId === after.userTeamId || g.awayId === after.userTeamId);
+      });
+      setTimeout(tick, userPlayed ? 360 : SIM_SPEED_MS);
     };
     setTimeout(tick, SIM_SPEED_MS);
   },
