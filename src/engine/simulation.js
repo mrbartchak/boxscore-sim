@@ -2,45 +2,55 @@
 // per-player box score that accumulates into season stats.
 
 import { gaussian, clamp, rand } from './random.js';
+import { POSITIONS } from './players.js';
 
 const TOTAL_MINUTES = 200; // 5 players * 40 minutes
 const HOME_ADVANTAGE = 3.2;
 
-// Build a default rotation for a roster: top 5 by overall start (30 min each),
-// the rest split bench minutes. Star = highest overall.
-export function defaultRotation(players) {
-  const sorted = [...players].sort((a, b) => b.overall - a.overall);
-  const starters = sorted.slice(0, 5).map((p) => p.id);
-  const minutes = {};
-  players.forEach((p) => {
-    minutes[p.id] = starters.includes(p.id) ? 30 : 10;
+// Playing time is derived from the rotation, not set by hand. Starters share the
+// bulk of the minutes; bench minutes fall off from the 6th man down to the 10th.
+const STARTER_MIN = 30; // 5 x 30 = 150
+const BENCH_MIN = [22, 13, 8, 5, 2]; // 6th..10th man -> 50
+
+// Build a default rotation: the best player at each position starts, the rest
+// fill the bench ordered by overall. Star = highest overall.
+export function defaultLineup(players) {
+  const byPos = {};
+  POSITIONS.forEach((pos) => (byPos[pos] = []));
+  players.forEach((p) => byPos[p.position].push(p));
+  Object.values(byPos).forEach((arr) => arr.sort((a, b) => b.overall - a.overall));
+
+  const used = new Set();
+  const starters = POSITIONS.map((pos) => {
+    const best = byPos[pos][0];
+    used.add(best.id);
+    return { pos, id: best.id };
   });
-  return { starters, minutes, starId: sorted[0].id };
+  const bench = players
+    .filter((p) => !used.has(p.id))
+    .sort((a, b) => b.overall - a.overall)
+    .map((p) => p.id);
+  const starId = [...players].sort((a, b) => b.overall - a.overall)[0].id;
+  return { starters, bench, starId };
 }
 
-// Normalize a rotation's minutes to exactly 200 player-minutes.
-export function normalizedMinutes(teamState) {
-  const { players, rotation } = teamState;
-  const raw = {};
-  let sum = 0;
-  players.forEach((p) => {
-    const m = Math.max(0, rotation.minutes[p.id] ?? 0);
-    raw[p.id] = m;
-    sum += m;
-  });
+// Minutes per player id, derived from starter/bench slot position.
+export function rotationMinutes(teamState) {
   const out = {};
-  if (sum === 0) {
-    players.forEach((p) => (out[p.id] = TOTAL_MINUTES / players.length));
-    return out;
-  }
-  players.forEach((p) => (out[p.id] = (raw[p.id] / sum) * TOTAL_MINUTES));
+  teamState.players.forEach((p) => (out[p.id] = 0));
+  teamState.rotation.starters.forEach((s) => {
+    if (s.id) out[s.id] = STARTER_MIN;
+  });
+  teamState.rotation.bench.forEach((id, i) => {
+    if (id) out[id] = BENCH_MIN[i] ?? 0;
+  });
   return out;
 }
 
 // Overall team strength (roughly 40-99) from minutes-weighted player overalls,
 // with a small bump for the star.
 export function teamStrength(teamState) {
-  const mins = normalizedMinutes(teamState);
+  const mins = rotationMinutes(teamState);
   let weighted = 0;
   teamState.players.forEach((p) => {
     weighted += p.overall * (mins[p.id] / TOTAL_MINUTES);
@@ -52,7 +62,7 @@ export function teamStrength(teamState) {
 
 // Distribute a team's points/assists/rebounds across players by tendency*minutes.
 function boxScore(teamState, teamPts) {
-  const mins = normalizedMinutes(teamState);
+  const mins = rotationMinutes(teamState);
   const players = teamState.players;
 
   const scoreW = players.map((p) => {

@@ -1,6 +1,7 @@
 import { useGame } from './store/useGame.js';
 import TeamSelect from './components/TeamSelect.jsx';
 import Layout from './components/Layout.jsx';
+import RosterReveal from './components/RosterReveal.jsx';
 import { TEAMS_BY_ID } from './data/teams.js';
 import { TeamBadge } from './components/common.jsx';
 
@@ -8,13 +9,15 @@ export default function App() {
   const phase = useGame((s) => s.phase);
   const champ = useGame((s) => s.nationalChampionId);
   const userTeamId = useGame((s) => s.userTeamId);
+  const showReveal = useGame((s) => s.showReveal);
 
   if (phase === 'SELECT') return <TeamSelect />;
 
   return (
     <>
       <Layout />
-      {champ && <ChampionBanner champId={champ} userTeamId={userTeamId} />}
+      {showReveal && <RosterReveal />}
+      {champ && !showReveal && <ChampionBanner champId={champ} userTeamId={userTeamId} />}
     </>
   );
 }

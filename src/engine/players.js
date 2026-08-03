@@ -87,6 +87,16 @@ export function generateRoster(team) {
   return players;
 }
 
+// Visual tier for an overall rating, used to color player cards.
+// 99 = rainbow, 90-98 = diamond, 80-89 = gold, 70-79 = silver, else base.
+export function overallTier(overall) {
+  if (overall >= 99) return 'rainbow';
+  if (overall >= 90) return 'diamond';
+  if (overall >= 80) return 'gold';
+  if (overall >= 70) return 'silver';
+  return 'base';
+}
+
 // Season averages for display; falls back to projections before games played.
 export function playerAverages(p) {
   if (p.gp > 0) {

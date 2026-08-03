@@ -130,14 +130,83 @@ export function selectNationalField(teamStates, championIds) {
     .sort((a, b) => ratingOf[b] - ratingOf[a]);
 }
 
+export const REGIONS = ['East', 'West', 'South', 'Midwest'];
+
+// Distribute 64 overall-seeded teams into 4 regions of 16, snaking each seed
+// line so the regions are balanced. regions[r][line] has regional seed line+1.
+function assignRegions(seeded) {
+  const regions = [[], [], [], []];
+  for (let line = 0; line < 16; line++) {
+    const group = seeded.slice(line * 4, line * 4 + 4);
+    const order = line % 2 === 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    order.forEach((regionIdx, i) => {
+      regions[regionIdx][line] = group[i];
+    });
+  }
+  return regions;
+}
+
+// The 64-team national bracket: four 16-team regions feeding a Final Four and
+// Championship. Regions 0,1 form the left half; 2,3 the right half.
 export function buildNationalBracket(seededTeamIds, startDate) {
-  const { games, lastDate, finalGameId } = buildSingleElim(
-    seededTeamIds,
-    startDate,
-    3,
-    'NATIONAL'
-  );
-  return { games, lastDate, finalGameId };
+  const regions = assignRegions(seededTeamIds);
+  const games = [];
+  const regionFinals = [];
+  let regionLastDate = startDate;
+
+  regions.forEach((teamsBySeed, r) => {
+    const { games: rGames, lastDate, finalGameId } = buildSingleElim(
+      teamsBySeed,
+      startDate,
+      2,
+      'NATIONAL'
+    );
+    rGames.forEach((g) => (g.region = r));
+    games.push(...rGames);
+    regionFinals.push(finalGameId);
+    regionLastDate = lastDate;
+  });
+
+  const ffDate = addDays(regionLastDate, 3);
+  const champDate = addDays(ffDate, 2);
+
+  const mkGame = (round, date) => ({
+    id: `x${_tid++}`,
+    phase: 'NATIONAL',
+    round,
+    date,
+    region: null,
+    neutral: true,
+    homeId: null,
+    awayId: null,
+    seedHome: null,
+    seedAway: null,
+    played: false,
+    result: null,
+    nextGameId: null,
+    nextSlot: null,
+  });
+
+  const ffA = mkGame(4, ffDate); // regions 0 vs 1 (left half)
+  const ffB = mkGame(4, ffDate); // regions 2 vs 3 (right half)
+  const champ = mkGame(5, champDate);
+  ffA.ffRegions = [0, 1];
+  ffB.ffRegions = [2, 3];
+
+  const link = (fromId, toGame, slot) => {
+    const g = games.find((x) => x.id === fromId);
+    g.nextGameId = toGame.id;
+    g.nextSlot = slot;
+  };
+  link(regionFinals[0], ffA, 'home');
+  link(regionFinals[1], ffA, 'away');
+  link(regionFinals[2], ffB, 'home');
+  link(regionFinals[3], ffB, 'away');
+  ffA.nextGameId = champ.id; ffA.nextSlot = 'home';
+  ffB.nextGameId = champ.id; ffB.nextSlot = 'away';
+
+  games.push(ffA, ffB, champ);
+  return { games, lastDate: champDate, finalGameId: champ.id };
 }
 
 export const NATIONAL_ROUND_NAMES = [

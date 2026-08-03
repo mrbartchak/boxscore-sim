@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { TEAMS, CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
 import { generateRoster } from '../engine/players.js';
-import { defaultRotation, simulateGame } from '../engine/simulation.js';
+import { defaultLineup, simulateGame } from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
 import {
   seedConferenceTournaments,
@@ -21,7 +21,7 @@ function freshTeamState(teamId) {
   return {
     teamId,
     players,
-    rotation: defaultRotation(players),
+    rotation: defaultLineup(players),
     record: { w: 0, l: 0 },
     confRecord: { w: 0, l: 0 },
     pf: 0,
@@ -75,10 +75,13 @@ export const useGame = create((set, get) => ({
   nationalField: null, // [teamId] seeded
   nationalChampionId: null,
   activeView: 'schedule', // schedule | roster | stats
+  showReveal: false,
+  revealRandom: false,
 
   setView: (v) => set({ activeView: v }),
+  dismissReveal: () => set({ showReveal: false }),
 
-  selectTeam: (teamId) => {
+  selectTeam: (teamId, { random = false } = {}) => {
     const teamStates = {};
     const teamIdsByConf = {};
     CONFERENCES.forEach((c) => (teamIdsByConf[c] = []));
@@ -104,59 +107,69 @@ export const useGame = create((set, get) => ({
       currentDate: PRESEASON,
       phase: 'REGULAR',
       activeView: 'schedule',
+      showReveal: true,
+      revealRandom: random,
+      champions: {},
+      nationalField: null,
+      nationalChampionId: null,
       version: get().version + 1,
     });
   },
 
   // ---- Rotation management (user team) ----
-  toggleStarter: (playerId) =>
-    set((s) => {
-      const ts = s.teamStates[s.userTeamId];
-      let starters = ts.rotation.starters;
-      if (starters.includes(playerId)) {
-        starters = starters.filter((id) => id !== playerId);
-      } else if (starters.length < 5) {
-        starters = [...starters, playerId];
-      } else {
-        return {};
-      }
-      return updateUserRotation(s, { starters });
-    }),
-
   setStar: (playerId) =>
-    set((s) => updateUserRotation(s, { starId: playerId })),
+    set((s) => setUserRotation(s, { ...s.teamStates[s.userTeamId].rotation, starId: playerId })),
 
-  setMinutes: (playerId, minutes) =>
+  // Swap the players occupying two lineup slots (starters or bench).
+  swapLineup: (fromSlot, toSlot) =>
     set((s) => {
-      const ts = s.teamStates[s.userTeamId];
-      const m = Math.max(0, Math.min(40, minutes));
-      return updateUserRotation(s, {
-        minutes: { ...ts.rotation.minutes, [playerId]: m },
-      });
+      if (fromSlot === toSlot) return {};
+      const rot = cloneRotation(s.teamStates[s.userTeamId].rotation);
+      const a = readSlot(rot, fromSlot);
+      const b = readSlot(rot, toSlot);
+      writeSlot(rot, fromSlot, b);
+      writeSlot(rot, toSlot, a);
+      return setUserRotation(s, rot);
     }),
 
   // ---- Simulation ----
-  simulateTo: (targetDate) => {
+  // Run the day-by-day loop on a timer until `shouldStop(state)` is true.
+  _runSim: (shouldStop) => {
     if (get().simulating) return;
-    if (targetDate <= get().currentDate) return;
-    set({ simulating: true, simTarget: targetDate });
-
+    set({ simulating: true });
     const tick = () => {
-      const s = get();
-      if (!s.simulating) return;
+      if (!get().simulating) return;
       get()._stepDay();
       const after = get();
-      // Any game that is scheduled with known participants but not yet played.
       const anyPending = Object.values(after.games).some(
         (g) => !g.played && g.homeId && g.awayId
       );
-      if (after.currentDate >= after.simTarget || after.phase === 'DONE' || !anyPending) {
-        set({ simulating: false, simTarget: null });
+      if (after.phase === 'DONE' || !anyPending || shouldStop(after)) {
+        set({ simulating: false });
         return;
       }
       setTimeout(tick, SIM_SPEED_MS);
     };
     setTimeout(tick, SIM_SPEED_MS);
+  },
+
+  simulateTo: (targetDate) => {
+    if (targetDate <= get().currentDate) return;
+    get()._runSim((st) => st.currentDate >= targetDate);
+  },
+
+  // Simulate the next round of the current tournament phase (one slate of games).
+  simulateRound: () => {
+    const phase = get().phase;
+    const target = nextPhaseGameDate(get(), phase);
+    if (!target) return;
+    get()._runSim((st) => st.currentDate >= target || st.phase !== phase);
+  },
+
+  // Simulate the rest of the current tournament phase (until the phase changes).
+  simulateTournament: () => {
+    const phase = get().phase;
+    get()._runSim((st) => st.phase !== phase);
   },
 
   stopSim: () => set({ simulating: false, simTarget: null }),
@@ -250,15 +263,44 @@ export const useGame = create((set, get) => ({
     }),
 }));
 
-function updateUserRotation(s, changes) {
+function setUserRotation(s, rotation) {
   const ts = s.teamStates[s.userTeamId];
   return {
-    teamStates: {
-      ...s.teamStates,
-      [s.userTeamId]: { ...ts, rotation: { ...ts.rotation, ...changes } },
-    },
+    teamStates: { ...s.teamStates, [s.userTeamId]: { ...ts, rotation } },
     version: s.version + 1,
   };
+}
+
+function cloneRotation(rot) {
+  return {
+    starters: rot.starters.map((x) => ({ ...x })),
+    bench: [...rot.bench],
+    starId: rot.starId,
+  };
+}
+
+// Slot ids: "S:PG".."S:C" for starters, "B:0".."B:4" for bench.
+function readSlot(rot, slot) {
+  const [type, key] = slot.split(':');
+  if (type === 'S') return rot.starters.find((s) => s.pos === key).id;
+  return rot.bench[Number(key)];
+}
+
+function writeSlot(rot, slot, playerId) {
+  const [type, key] = slot.split(':');
+  if (type === 'S') rot.starters.find((s) => s.pos === key).id = playerId;
+  else rot.bench[Number(key)] = playerId;
+}
+
+// Earliest date of an unplayed, ready-to-play game in the given phase.
+function nextPhaseGameDate(state, phase) {
+  let min = null;
+  Object.values(state.games).forEach((g) => {
+    if (g.phase === phase && !g.played && g.homeId && g.awayId) {
+      if (!min || g.date < min) min = g.date;
+    }
+  });
+  return min;
 }
 
 // Append newly generated games into the games map (mutated in place) and return

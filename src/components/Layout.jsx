@@ -2,7 +2,7 @@ import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
 import { TeamBadge, contrastColor } from './common.jsx';
-import ScheduleView from './ScheduleView.jsx';
+import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
 
@@ -62,7 +62,7 @@ export default function Layout() {
       </header>
 
       <main className="content">
-        {activeView === 'schedule' && <ScheduleView />}
+        {activeView === 'schedule' && <SeasonView />}
         {activeView === 'roster' && <RosterView />}
         {activeView === 'stats' && <StatsView />}
       </main>
