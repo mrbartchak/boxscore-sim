@@ -28,7 +28,9 @@ export default function RosterView() {
     setOverSlot(null);
   };
 
-  const renderSlot = (slot, label, player) => (
+  // Starter slots carry a position; bench slots don't, so reserves never show a
+  // fit penalty (matching how teamStrength scores them).
+  const renderSlot = (slot, label, player, slotPosition) => (
     <div
       key={slot}
       className={`slot ${overSlot === slot ? 'is-over' : ''} ${dragSlot === slot ? 'is-source' : ''}`}
@@ -43,7 +45,7 @@ export default function RosterView() {
       <PlayerCard
         player={player}
         layout="tile"
-        showAttributes
+        slotPosition={slotPosition}
         stats={seasonAverages(player)}
         isStar={player.id === ts.rotation.starId}
         onToggleStar={() => setStar(player.id)}
@@ -68,15 +70,19 @@ export default function RosterView() {
         </div>
         <p className="roster__hint">
           Drag any player onto another slot to swap them. Starters split the most minutes; bench minutes fall
-          off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost). Every player has an
-          archetype and six attributes — hover any bar for the full name.
+          off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost).
+        </p>
+        <p className="roster__hint">
+          Players start out of position are rated for the spot they're filling, not their natural one — a
+          Floor General slid to the two loses most of what makes him good. Sometimes it works the other way.
+          Watch Team Rating as you shuffle.
         </p>
       </div>
 
       <section className="starters">
         <h3 className="starters__title">Starting Five</h3>
         <div className="lineup__row">
-          {ts.rotation.starters.map((s) => renderSlot(`S:${s.pos}`, s.pos, byId[s.id]))}
+          {ts.rotation.starters.map((s) => renderSlot(`S:${s.pos}`, s.pos, byId[s.id], s.pos))}
         </div>
       </section>
 

@@ -2,7 +2,7 @@
 // per-player box score that accumulates into season stats.
 
 import { gaussian, clamp, rand } from './random.js';
-import { POSITIONS } from './players.js';
+import { POSITIONS, effectiveOverall } from './players.js';
 import {
   MARGIN_SD_VS_SPREAD,
   TYPICAL_GAME_TOTAL,
@@ -68,6 +68,16 @@ export function defaultLineup(players) {
   return { starters, bench, starId };
 }
 
+// Which lineup slot each starter is filling. Bench players aren't assigned a
+// position — a bench unit is fluid, so reserves are never out of position.
+export function slotPositions(teamState) {
+  const out = {};
+  teamState.rotation.starters.forEach((s) => {
+    if (s.id) out[s.id] = s.pos;
+  });
+  return out;
+}
+
 // Minutes per player id, derived from starter/bench slot position.
 export function rotationMinutes(teamState) {
   const out = {};
@@ -81,17 +91,24 @@ export function rotationMinutes(teamState) {
   return out;
 }
 
-// Overall team strength (roughly 40-99) from minutes-weighted player overalls,
+// Overall team strength (roughly 40-99) from minutes-weighted player ratings,
 // plus a small bump for the star and a minutes-weighted experience premium.
 // Because this is minutes-weighted, a top-heavy roster is only as good as its
 // bench lets it be — a thin blue-blood really does rate below a deep rival.
+//
+// Ratings are counted AT THE SLOT EACH PLAYER FILLS, not at his natural spot,
+// so stacking your two best point guards costs you whatever the second one
+// gives up sliding to the two. `defaultLineup` never plays anyone out of
+// position, so this is worth exactly zero until a human moves someone — the
+// league-wide calibration is untouched by design.
 export function teamStrength(teamState) {
   const mins = rotationMinutes(teamState);
+  const slots = slotPositions(teamState);
   let weighted = 0;
   let experience = 0;
   teamState.players.forEach((p) => {
     const share = mins[p.id] / TOTAL_MINUTES;
-    weighted += p.overall * share;
+    weighted += effectiveOverall(p, slots[p.id]) * share;
     experience += (CLASS_BONUS[p.class] ?? 0) * share;
   });
   const star = teamState.players.find((p) => p.id === teamState.rotation.starId);

@@ -1,11 +1,13 @@
-import { overallTier, CLASS_LABEL, archetypeOf } from '../engine/players.js';
-import { ATTRIBUTES, ATTR_SHORT, ATTR_LABEL } from '../data/archetypes.js';
+import { overallTier, CLASS_LABEL, archetypeOf, effectiveOverall } from '../engine/players.js';
 
 // Player card whose color mirrors the overall tier.
 // `stats` is a {ppg,apg,rpg} object, or null to show dashes.
 // layout: 'wide' (reveal) or 'tile' (roster grid).
-// `showAttributes` adds the six-attribute breakdown (roster view only — the
-// reveal stays about the name, the tier and the archetype).
+// `slotPosition` is the lineup spot he's filling; when it isn't his natural
+// position the card shows what he's actually worth there.
+//
+// The six underlying attributes are deliberately NOT displayed. They drive
+// everything, but working out which archetypes fit together is the game.
 export default function PlayerCard({
   player,
   stats,
@@ -14,11 +16,16 @@ export default function PlayerCard({
   rootProps = {},
   className = '',
   layout = 'wide',
-  showAttributes = false,
+  slotPosition,
 }) {
   const tier = overallTier(player.overall);
   const arch = archetypeOf(player);
   const d = (v) => (stats ? v : '—');
+
+  // Tier colour and the big number stay tied to his natural rating, so a card
+  // doesn't change identity mid-drag; the fit badge carries the consequence.
+  const fit = effectiveOverall(player, slotPosition);
+  const fitDelta = fit - player.overall;
 
   const star = onToggleStar && (
     <button
@@ -31,21 +38,17 @@ export default function PlayerCard({
     </button>
   );
 
-  const attributes = showAttributes && (
-    <div className="pcard__attrs">
-      {ATTRIBUTES.map((a) => (
-        <div className="pcard__attr" key={a} title={`${ATTR_LABEL[a]}: ${player.attrs[a]}`}>
-          <div className="pcard__attrtop">
-            <span className="pcard__attrlab">{ATTR_SHORT[a]}</span>
-            <span className="pcard__attrval">{player.attrs[a]}</span>
-          </div>
-          <div className="pcard__attrbar">
-            {/* 25 is the attribute floor, so scale from there or everything looks half-full */}
-            <i style={{ width: `${Math.max(0, ((player.attrs[a] - 25) / 74) * 100)}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
+  const fitBadge = fitDelta !== 0 && (
+    <span
+      className={`pcard__fit ${fitDelta > 0 ? 'is-up' : 'is-down'}`}
+      title={
+        `${player.name} is a natural ${player.position}. Playing ${slotPosition}, ` +
+        `he's worth ${fit} — ${fitDelta > 0 ? 'a better' : 'a worse'} fit by ` +
+        `${Math.abs(fitDelta)}.`
+      }
+    >
+      {fit} at {slotPosition}
+    </span>
   );
 
   if (layout === 'tile') {
@@ -61,8 +64,10 @@ export default function PlayerCard({
           {player.name}
           {isStar && <span className="star pcard__star">★</span>}
         </div>
-        <div className="pcard__arch" title={arch.blurb}>{arch.label}</div>
-        {attributes}
+        <div className="pcard__archrow">
+          <span className="pcard__arch" title={arch.blurb}>{arch.label}</span>
+          {fitBadge}
+        </div>
         <div className="pcard__stats pcard__stats--tile">
           <Stat label="PPG" value={d(stats?.ppg)} strong />
           <Stat label="APG" value={d(stats?.apg)} />
@@ -85,9 +90,11 @@ export default function PlayerCard({
           <span>·</span>
           <span title={CLASS_LABEL[player.class]}>{player.class}</span>
         </div>
-        <div className="pcard__arch" title={arch.blurb}>{arch.label}</div>
+        <div className="pcard__archrow">
+          <span className="pcard__arch" title={arch.blurb}>{arch.label}</span>
+          {fitBadge}
+        </div>
       </div>
-      {attributes}
       <div className="pcard__stats">
         <Stat label="PPG" value={d(stats?.ppg)} strong />
         <Stat label="APG" value={d(stats?.apg)} />

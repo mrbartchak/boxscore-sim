@@ -32,6 +32,16 @@ export function archetypeOf(player) {
   return ARCHETYPES_BY_ID[player.archetype];
 }
 
+// What a player is worth in the slot he's actually playing. Because overall is
+// a positional dot product, this needs no new data: a Floor General slid to
+// shooting guard sees his playmaking edge devalued from 26% of his rating to
+// 14%, and drops. Occasionally it goes the other way — a rebounding-heavy wing
+// is worth MORE at the four — which is the discovery worth leaving in.
+export function effectiveOverall(player, slotPosition) {
+  if (!slotPosition || slotPosition === player.position) return player.overall;
+  return overallFrom(player.attrs, slotPosition);
+}
+
 // Archetypes eligible for a player of this position and talent level. Elite
 // shapes are gated behind `minOverall` so "Unicorn" stays a thing that happens
 // to a roster rather than a label; `maxOverall` keeps Raw Project off the best

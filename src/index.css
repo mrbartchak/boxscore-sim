@@ -376,18 +376,20 @@ table { border-collapse: collapse; width: 100%; }
 .pcard__cls { font-size: 11px; font-weight: 700; opacity: 0.6; }
 .pcard--tile .pcard__cls { margin-left: 6px; }
 
-.pcard__attrs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 8px; margin-top: 6px; }
-.pcard__attr { min-width: 0; cursor: help; }
-.pcard__attrtop { display: flex; justify-content: space-between; align-items: baseline; gap: 2px; }
-.pcard__attrlab { font-size: 8.5px; font-weight: 700; letter-spacing: 0.4px; opacity: 0.6; }
-.pcard__attrval { font-size: 11px; font-weight: 800; }
-/* color-mix on the track, not opacity — opacity on the parent would multiply
-   into the fill and wash the whole bar out. */
-.pcard__attrbar {
-  height: 3px; border-radius: 2px; margin-top: 1px; overflow: hidden;
-  background: color-mix(in srgb, currentColor 20%, transparent);
+/* Out-of-position rating. The only visible trace of the attribute model — the
+   six ratings underneath stay hidden on purpose. */
+.pcard__archrow { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pcard__archrow .pcard__arch { flex: 1; min-width: 0; }
+.pcard__fit {
+  flex-shrink: 0; font-size: 10px; font-weight: 800; letter-spacing: 0.3px;
+  padding: 1px 5px; border-radius: 5px; cursor: help; white-space: nowrap;
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
-.pcard__attrbar i { display: block; height: 100%; background: currentColor; opacity: 0.85; }
+.pcard__fit.is-down { color: #d94a63; }
+.pcard__fit.is-up { color: #1f9d68; }
+/* The light tier gradients need brighter text to stay legible. */
+.pcard--base .pcard__fit.is-down, .pcard--diamond .pcard__fit.is-down { color: var(--loss); }
+.pcard--base .pcard__fit.is-up, .pcard--diamond .pcard__fit.is-up { color: var(--win); }
 
 .pcard--tile { flex-direction: column; align-items: stretch; gap: 4px; min-height: 0; padding: 9px 10px; }
 .pcard__toprow { display: flex; align-items: center; gap: 8px; }
@@ -447,7 +449,7 @@ table { border-collapse: collapse; width: 100%; }
 .reveal__rostertitle { margin: 36px 0 16px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
 .reveal__cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; width: 100%; }
 .reveal__placeholder {
-  border: 1px dashed var(--border); border-radius: 12px; min-height: 136px; opacity: 0.4;
+  border: 1px dashed var(--border); border-radius: 12px; min-height: 132px; opacity: 0.4;
   display: flex; align-items: center; justify-content: center;
   font-size: 20px; font-weight: 800; color: var(--faint); letter-spacing: 1px;
 }

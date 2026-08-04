@@ -41,8 +41,8 @@ data/  →  engine/  →  store/  →  components/
   distributions. **Facts, not logic** — the engine never reads it at runtime; it
   is the calibration target the sim constants were tuned against.
 - `engine/random.js` — RNG helpers (`gaussian` (Box-Muller), `shuffle`, `weightedIndex`, `pick`, `clamp`, `round1`).
-- `engine/players.js` — `generateRoster(team)`, `overallFrom()`, `archetypeOf()`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
-- `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`.
+- `engine/players.js` — `generateRoster(team)`, `overallFrom()`, `effectiveOverall()`, `archetypeOf()`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
+- `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `slotPositions()`, `teamStrength()`, `simulateGame()`.
 - `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
 - `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
@@ -87,6 +87,8 @@ get skipped.
 `{ starters: [{pos, id} × 5], bench: [id × 5], starId }`. Slot ids used by
 drag-and-drop: `"S:PG".."S:C"` and `"B:0".."B:4"`. Minutes are DERIVED, not set:
 starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineup(fromSlot, toSlot)` swaps occupants. `starId` gives a usage boost in the sim.
+A starter's `pos` is the slot he FILLS, which may not be his natural position —
+see Positional fit.
 
 ### Attributes and archetypes
 Every player carries `attrs` — `inside`, `outside`, `playmaking`, `perimeterD`,
@@ -113,10 +115,34 @@ Consequences worth knowing:
   the rest of his own game. Scoring uses a gentler exponent (1.35 vs 3.2/2.8)
   because usage, star status and minutes already multiply it downstream.
 
-Not yet wired into outcomes: `teamStrength` still reads only `overall`, so
-attributes and archetypes are currently flavour + box-score shape. They are the
-foundation for lineup-fit ratings (spacing, rim protection, positional fit),
-which is where they start deciding games.
+**The six attributes are deliberately NOT shown in the UI.** Cards show overall
+and archetype only. Working out which archetypes fit together is the game — do
+not "helpfully" add an attribute readout.
+
+### Positional fit (live)
+`teamStrength` rates each starter via `effectiveOverall(player, slotPosition)` —
+his overall recomputed under the slot's `POSITION_WEIGHTS` — not at his natural
+spot. Stacking two point guards costs whatever the second gives up sliding over.
+Bench players have no assigned slot and are never penalised.
+
+Two properties this leans on, both verified:
+- **`defaultLineup` never plays anyone out of position** (rosters always hold
+  exactly 2 of each position, and the logjam swap preserves that multiset). So
+  the penalty is worth exactly zero for all 184 AI teams and the league
+  calibration is untouched. Confirmed over 7,360 default lineups: 0 out of spot.
+- Searching every swap from the default lineup, ~89% of rosters have some
+  improvement available, averaging +0.45 rating (~0.8 pts of margin), best
+  observed +1.9 (~3.4 pts). The worst available mistake costs ~-1.5.
+
+That gap is intentional: the AI leaves value on the table, and finding it is the
+user's reward for engaging. Don't "fix" `defaultLineup` into an optimiser without
+deciding how much edge the player should keep.
+
+The card's big number and tier colour stay tied to the NATURAL overall so a card
+doesn't change identity mid-drag; the `pcard__fit` badge carries the consequence.
+
+Still not wired into outcomes: unit-fit terms (spacing, creation, rim
+protection, perimeter containment) — see the next-steps discussion.
 
 ### Roster generation (`generateRoster`) — four stages, in order
 1. **Team talent level** — `prestigeToOverall(prestige) + gaussian(0, 3.6)`. The
