@@ -1,21 +1,57 @@
 // Ranking computations for teams (overall + per conference) and players (league).
 
-import { TEAMS_BY_ID } from '../data/teams.js';
+import { TEAMS_BY_ID, CONFERENCES } from '../data/teams.js';
 import { seasonAverages } from './players.js';
+import { teamStrength, MARGIN_PER_RATING } from './simulation.js';
 
-// A blended power rating: win%, scoring margin, and prestige as a light
-// strength-of-schedule proxy (helps compare across conferences early on).
-export function powerRating(ts) {
+// Average roster strength of each conference, and the league average. The
+// regular season is played ENTIRELY inside the conference, so a team's schedule
+// strength simply *is* its league's strength — there is nothing else to measure.
+export function ratingContext(teamStates) {
+  const all = Object.values(teamStates);
+  const strengthById = {};
+  all.forEach((ts) => (strengthById[ts.teamId] = teamStrength(ts)));
+
+  const byConf = {};
+  CONFERENCES.forEach((c) => (byConf[c] = []));
+  all.forEach((ts) => byConf[TEAMS_BY_ID[ts.teamId].conference].push(strengthById[ts.teamId]));
+
+  const confStrength = {};
+  Object.entries(byConf).forEach(([c, xs]) => {
+    confStrength[c] = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+  });
+  const leagueAvg =
+    all.reduce((a, ts) => a + strengthById[ts.teamId], 0) / (all.length || 1);
+
+  return { confStrength, leagueAvg };
+}
+
+// Selection-committee-style resume rating, built on OPPONENT-ADJUSTED scoring
+// margin the way the real NET is. Raw margin is the trap: a dominant team in a
+// one-bid league piles up +20s against nobody, and rating that at face value
+// puts them on the 4 line and eventually in a Final Four, which has never
+// happened. Since the regular season is played entirely inside the conference,
+// the adjustment is exact — a league that rates X points weak inflates every
+// margin inside it by X * MARGIN_PER_RATING points.
+export function powerRating(ts, ctx) {
   const games = ts.record.w + ts.record.l;
-  const winPct = games ? ts.record.w / games : 0.5;
-  const margin = games ? (ts.pf - ts.pa) / games : 0;
-  const team = TEAMS_BY_ID[ts.teamId];
-  return winPct * 100 + margin * 1.5 + team.prestige * 0.25;
+  if (!games) {
+    // Preseason: nothing to judge but the program itself.
+    return TEAMS_BY_ID[ts.teamId].prestige;
+  }
+  const winPct = ts.record.w / games;
+  const margin = (ts.pf - ts.pa) / games;
+  const conf = TEAMS_BY_ID[ts.teamId].conference;
+  const sos = ctx ? ctx.confStrength[conf] - ctx.leagueAvg : 0;
+  const adjMargin = margin + sos * MARGIN_PER_RATING;
+  // Efficiency leads, record still counts — the committee rewards winning.
+  return adjMargin * 2 + winPct * 25;
 }
 
 export function rankTeams(teamStates) {
+  const ctx = ratingContext(teamStates);
   return Object.values(teamStates)
-    .map((ts) => ({ ts, rating: powerRating(ts) }))
+    .map((ts) => ({ ts, rating: powerRating(ts, ctx) }))
     .sort((a, b) => b.rating - a.rating)
     .map((x, i) => ({ ...x, rank: i + 1 }));
 }

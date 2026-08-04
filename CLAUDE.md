@@ -12,6 +12,9 @@ game logic can be ported/served later (see Architecture).
 - `npm run dev` — dev server at http://localhost:5173/ (exposed on LAN via `server.host` in `vite.config.js`)
 - `npm run build` — production build to `dist/` (use this to catch compile errors)
 - `npm run preview` — serve the built app
+- `npm run calibrate -- [seasons]` — **run this after touching roster generation
+  or any simulation weight.** Sims N full seasons headless and diffs the result
+  against the historical record in `data/marchmadness.js`.
 
 Headless engine checks: the store + engine are pure ESM importable in Node
 (no JSX), so a `node script.mjs` that imports `src/store/useGame.js`, calls
@@ -30,7 +33,11 @@ data/  →  engine/  →  store/  →  components/
 ## File map
 - `data/teams.js` — 17 conferences, 184 teams. Each team: `{id, name, abbr, conference, prestige(0-100), color}`. `prestige` drives roster quality.
 - `data/names.js` — first/last name pools.
-- `engine/random.js` — RNG helpers (`gaussian`, `pick`, `clamp`, `round1`).
+- `data/marchmadness.js` — historical NCAA tournament aggregates (1985–2024):
+  seed-by-seed first round win rates, typical spreads, champion/Final Four
+  distributions. **Facts, not logic** — the engine never reads it at runtime; it
+  is the calibration target the sim constants were tuned against.
+- `engine/random.js` — RNG helpers (`gaussian` (Box-Muller), `shuffle`, `weightedIndex`, `pick`, `clamp`, `round1`).
 - `engine/players.js` — `generateRoster(team)`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
 - `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`.
 - `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
@@ -78,6 +85,46 @@ get skipped.
 drag-and-drop: `"S:PG".."S:C"` and `"B:0".."B:4"`. Minutes are DERIVED, not set:
 starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineup(fromSlot, toSlot)` swaps occupants. `starId` gives a usage boost in the sim.
 
+### Roster generation (`generateRoster`) — four stages, in order
+1. **Team talent level** — `prestigeToOverall(prestige) + gaussian(0, 3.6)`. The
+   noise is the point: it gives blue-bloods down years and mid-majors dream
+   teams. Deliberately conservative; the top of a roster is NOT built here.
+2. **`spread`** — how top-heavy the roster is, wider at high prestige. Applied
+   through `TALENT_LADDER`, a 10-step curve re-centered on its own mean so
+   `spread` changes a roster's SHAPE without changing how strong the team is.
+   This is what keeps a blue-blood's 9th man from out-rating a good high-major's
+   starters (the bug that motivated the whole system).
+3. **Talent lottery** — two independent rolls on the best player. The common
+   *blue-chip* roll is capped at 96; only the rare *generational* roll reaches
+   the top of the scale, which is what keeps a 99 a once-in-years event.
+   Odds scale with prestige but are never zero — Davidson landed Steph Curry.
+4. **Position assignment** — the ladder is dealt across positions so the top five
+   talents each take a different spot, with a 30% chance of a logjam swap.
+
+Tuned so `npm run calibrate` reports: Duke starters ~83 / bench ~68, ~14 diamonds
+and ~0.5 rainbows league-wide per season, and ~2 diamond+ players per season at
+sub-65-prestige programs.
+
+### Simulation weighting — all calibrated against `data/marchmadness.js`
+`simulateGame` is `ratingGap * MARGIN_PER_RATING + home court`, scattered by
+`MARGIN_SD`. Do not change these blind — `npm run calibrate` exists to check them:
+- `MARGIN_PER_RATING` (1.8) — rating → points. Set so the strength gaps between
+  seed lines reproduce real first-round spreads (1v16 ≈ 23.5, 8v9 ≈ pick'em).
+- `MARGIN_SD` (11.0) — real CBB margins scatter ~11 points around the spread.
+  Lowering this is the fastest way to make the bracket unrealistically chalky.
+- `HOME_COURT_POINTS` — added in POINTS after the rating conversion, not before.
+- `CLASS_BONUS` — veteran rotations outperform raw talent, the best-documented
+  reason veteran mid-majors upset freshman-led blue-bloods.
+- `POSTSEASON_FORM_SD` — re-rolled per team at each postseason phase, **always
+  after the field is seeded**. Our seeding is near-perfect (true strength over 30
+  games) where the real committee seeds a four-month-old resume; this models that
+  gap, and without it 1 seeds win ~78% of titles instead of the historical ~63%.
+
+Known residual: 5v12 and 8v9 come out ~5-7 points chalkier than history, because
+the real committee under-seeds mid-major champions and the 8/9 line is a coin
+flip by construction. Our seeding is strictly merit-ordered, so it can't
+reproduce that. Everything else lands within ~4 points.
+
 ### Player stats
 - `projPpg/projApg/projReb` — internal sim weights, normalized at generation so
   the roster sums to a realistic team total (~73 pts). NOT displayed directly.
@@ -87,10 +134,24 @@ starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineu
 - **Reveal shows career averages; Roster shows season averages.**
 - `overallTier(ovr)`: 99=rainbow, 90-98=diamond, 80-89=gold, 70-79=silver, else base. Drives `PlayerCard` colors and reveal animation drama.
 
-### National bracket
-64 teams → 4 regions of 16 (snake-seeded 1–16) → Final Four → Championship.
-Rendered two-sided (regions 0,1 left; 2,3 right) with the title game in the
-middle. Region games carry `region` (0–3); FF games carry `ffRegions`.
+### National bracket — mirrors the real bracketing principles
+64 teams → 4 regions of 16 → Final Four → Championship. Rendered two-sided
+(regions 0,1 left; 2,3 right) with the title game in the middle. Region games
+carry `region` (0–3); FF games carry `ffRegions`. The rules it implements:
+- **Auto-bids first.** Every conference tournament champion is in regardless of
+  resume (which is how a sub-.500 team reaches the field); the rest are at-large.
+- **Seeding is opponent-adjusted.** `powerRating` runs on adjusted scoring margin
+  — since the regular season is played entirely inside the conference, a team's
+  SOS simply *is* its conference's strength, and the adjustment is exact. Raw
+  margin is the trap: it puts one-bid-league bullies on the 4 line.
+- **S-curve.** `assignRegions` deals each seed line across regions in alternating
+  direction, so the strongest 1 seed draws the weakest 2 and the weakest 16.
+- **Conference separation.** `separateConferences` hill-climbs on swaps *within a
+  seed line* until no two same-conference teams share a Sweet 16 path. Residual
+  ~1% of first-round games, where a big conference makes it unavoidable.
+
+Deliberate omission: the real event is 68 with a First Four play-in. This is the
+64-team bracket the play-in feeds.
 
 ## Conventions
 - JSX (not TS). Plain CSS in `src/index.css` with CSS custom properties; the
@@ -108,3 +169,8 @@ middle. Region games carry `region` (0–3); FF games carry `ffRegions`.
 - Season calendar is date-compressed (title game lands ~late Feb, not April).
 - When adding a conference, keep it **≥8 teams** — `seedConferenceTournaments`
   builds an 8-team bracket and assumes at least 8.
+- Every regular-season game is **intra-conference** (double round-robin), so a
+  team's record is only meaningful relative to its league. Several parts of the
+  engine depend on this; adding non-conference games means reworking the SOS
+  term in `powerRating` into a real opponent-average.
+- Conference tournaments are 8 teams for every conference regardless of size.

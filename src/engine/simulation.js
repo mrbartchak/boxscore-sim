@@ -3,9 +3,43 @@
 
 import { gaussian, clamp, rand } from './random.js';
 import { POSITIONS } from './players.js';
+import {
+  MARGIN_SD_VS_SPREAD,
+  TYPICAL_GAME_TOTAL,
+  HOME_COURT_POINTS,
+} from '../data/marchmadness.js';
 
 const TOTAL_MINUTES = 200; // 5 players * 40 minutes
-const HOME_ADVANTAGE = 3.2;
+
+// Rating points -> expected point margin. Calibrated so the strength gaps this
+// engine produces between seed lines land on the historical first-round spreads
+// in data/marchmadness.js (a 1 vs 16 is ~23.5, an 8 vs 9 is a pick'em).
+// See scripts/calibrate.mjs — re-run it if you touch roster generation.
+export const MARGIN_PER_RATING = 1.8;
+
+// Game-to-game noise. Real college margins scatter ~11 points around the spread;
+// this single constant is why a 20-point favorite still loses sometimes, and
+// dropping it is the fastest way to make the bracket unrealistically chalky.
+const MARGIN_SD = MARGIN_SD_VS_SPREAD;
+
+// Single elimination on a neutral floor is noisier than a league game: no home
+// crowd, an opponent nobody has scouted, and no chance to make it back tomorrow.
+// About a point of extra scatter — enough to keep the deep rounds from going
+// chalk without disturbing the regular season's calibration.
+const TOURNEY_SD_BONUS = 1.1;
+
+// Experience premium, in rating points, applied by minutes. Older rotations
+// consistently outperform their raw talent in March — it's the best-documented
+// reason veteran mid-majors knock off freshman-led blue-bloods.
+const CLASS_BONUS = { FR: -1.2, SO: -0.3, JR: 0.5, SR: 1.2 };
+
+// How far a team's March level drifts from the resume it was seeded on.
+// Without this the bracket is far too chalky: our seeding is computed from true
+// strength over a 30-game sample, so it is a near-perfect ranking, while the
+// real committee is seeding a four-month-old resume for a team whose rotation,
+// health and confidence have all moved since. That gap — not luck in any single
+// game — is what actually produces Cinderella runs and blue-blood flameouts.
+const POSTSEASON_FORM_SD = 0.9;
 
 // Playing time is derived from the rotation, not set by hand. Starters share the
 // bulk of the minutes; bench minutes fall off from the 6th man down to the 10th.
@@ -48,16 +82,32 @@ export function rotationMinutes(teamState) {
 }
 
 // Overall team strength (roughly 40-99) from minutes-weighted player overalls,
-// with a small bump for the star.
+// plus a small bump for the star and a minutes-weighted experience premium.
+// Because this is minutes-weighted, a top-heavy roster is only as good as its
+// bench lets it be — a thin blue-blood really does rate below a deep rival.
 export function teamStrength(teamState) {
   const mins = rotationMinutes(teamState);
   let weighted = 0;
+  let experience = 0;
   teamState.players.forEach((p) => {
-    weighted += p.overall * (mins[p.id] / TOTAL_MINUTES);
+    const share = mins[p.id] / TOTAL_MINUTES;
+    weighted += p.overall * share;
+    experience += (CLASS_BONUS[p.class] ?? 0) * share;
   });
   const star = teamState.players.find((p) => p.id === teamState.rotation.starId);
   const starBump = star ? (star.overall - 60) * 0.02 : 0;
-  return weighted + starBump;
+  return weighted + starBump + experience + (teamState.form ?? 0);
+}
+
+// Re-roll every team's form. Called at each postseason phase change and ALWAYS
+// after the field has been picked and seeded, so the committee is judging the
+// resume and nothing else — exactly like the real thing.
+export function rollPostseasonForm(teamStates) {
+  const out = {};
+  Object.values(teamStates).forEach((ts) => {
+    out[ts.teamId] = { ...ts, form: gaussian(0, POSTSEASON_FORM_SD) };
+  });
+  return out;
 }
 
 // Distribute a team's points/assists/rebounds across players by tendency*minutes.
@@ -102,19 +152,21 @@ function boxScore(teamState, teamPts) {
 }
 
 // Simulate a single game. `home`/`away` are team states. Returns a result.
-export function simulateGame(home, away, { neutral = false } = {}) {
-  const sHome = teamStrength(home) + (neutral ? 0 : HOME_ADVANTAGE);
-  const sAway = teamStrength(away);
+// `bracket` marks single-elimination games, which carry extra variance.
+export function simulateGame(home, away, { neutral = false, bracket = false } = {}) {
+  // Home court is worth POINTS, not rating — convert the rating gap to a margin
+  // first, then add it, or the edge gets multiplied into something absurd.
+  const ratingGap = teamStrength(home) - teamStrength(away);
+  const expMargin = ratingGap * MARGIN_PER_RATING + (neutral ? 0 : HOME_COURT_POINTS);
 
-  const expMargin = (sHome - sAway) * 0.9;
-  const margin = gaussian(expMargin, 9);
-  const total = clamp(gaussian(143, 12), 118, 192);
+  const margin = gaussian(expMargin, MARGIN_SD + (bracket ? TOURNEY_SD_BONUS : 0));
+  const total = clamp(gaussian(TYPICAL_GAME_TOTAL, 12), 118, 192);
 
   let homePts = Math.round((total + margin) / 2);
   let awayPts = Math.round((total - margin) / 2);
   if (homePts === awayPts) {
-    // Overtime: nudge the stronger side.
-    if (sHome + (neutral ? HOME_ADVANTAGE : 0) >= sAway) homePts += 2;
+    // Overtime: nudge the side that was favored.
+    if (expMargin >= 0) homePts += 2;
     else awayPts += 2;
   }
 

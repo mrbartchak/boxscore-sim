@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { TEAMS, CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
 import { generateRoster } from '../engine/players.js';
-import { defaultLineup, simulateGame } from '../engine/simulation.js';
+import { defaultLineup, simulateGame, rollPostseasonForm } from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
 import {
   seedConferenceTournaments,
@@ -27,6 +27,7 @@ function freshTeamState(teamId) {
     pf: 0,
     pa: 0,
     streak: 0, // + wins, - losses
+    form: 0, // postseason peak/slump, rolled when the brackets are drawn
   };
 }
 
@@ -213,7 +214,10 @@ export const useGame = create((set, get) => ({
 
         const home = teamStates[g.homeId];
         const away = teamStates[g.awayId];
-        const result = simulateGame(home, away, { neutral: g.neutral });
+        const result = simulateGame(home, away, {
+          neutral: g.neutral,
+          bracket: g.phase === 'CONF_TOURNEY' || g.phase === 'NATIONAL',
+        });
 
         const homeWon = result.winnerId === g.homeId;
         const isConf = g.phase === 'REGULAR' || g.phase === 'CONF_TOURNEY';
@@ -259,6 +263,8 @@ export const useGame = create((set, get) => ({
         patch.gameIdsByDate = appendGames(games, s.gameIdsByDate, tGames);
         patch.phase = 'CONF_TOURNEY';
         patch.lastConfDate = lastDate;
+        // Seeds are locked in above; now find out who is actually peaking.
+        patch.teamStates = rollPostseasonForm(teamStates);
       } else if (s.phase === 'CONF_TOURNEY' && allPlayed('CONF_TOURNEY')) {
         // Conference champions = winners of each conference final.
         const champions = {};
@@ -274,6 +280,9 @@ export const useGame = create((set, get) => ({
         patch.phase = 'NATIONAL';
         patch.champions = champions;
         patch.nationalField = field;
+        // Re-roll AFTER selection and seeding — the committee never gets to see
+        // who is about to get hot.
+        patch.teamStates = rollPostseasonForm(teamStates);
       } else if (s.phase === 'NATIONAL' && allPlayed('NATIONAL')) {
         const finalGame = Object.values(games).find(
           (g) => g.phase === 'NATIONAL' && g.played && !g.nextGameId

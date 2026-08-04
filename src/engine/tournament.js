@@ -4,7 +4,7 @@
 
 import { CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
 import { addDays } from './schedule.js';
-import { conferenceStandings, powerRating } from './rankings.js';
+import { conferenceStandings, powerRating, ratingContext } from './rankings.js';
 
 let _tid = 0;
 
@@ -109,12 +109,19 @@ export function seedConferenceTournaments(teamStates, startDate) {
   return { games: allGames, finals, lastDate };
 }
 
-// Select the 64-team national field: conference champions get automatic bids,
-// the rest are at-large by power rating. All 64 are seeded 1-64 by rating.
+// Select the national field the way the selection committee does: every
+// conference tournament champion takes an automatic bid no matter how bad their
+// resume, and the remaining spots go at-large to the best resumes left on the
+// board. All 64 are then seeded 1-64 on the same rating — which is how a
+// one-bid-league champion ends up a 15 or 16 seed.
+//
+// (The real event is 68 with a First Four play-in; this bracket is the 64-team
+// field the play-in feeds, so those four games are the deliberate omission.)
 export function selectNationalField(teamStates, championIds) {
   const champSet = new Set(championIds);
+  const ctx = ratingContext(teamStates);
   const ranked = Object.values(teamStates)
-    .map((ts) => ({ teamId: ts.teamId, rating: powerRating(ts) }))
+    .map((ts) => ({ teamId: ts.teamId, rating: powerRating(ts, ctx) }))
     .sort((a, b) => b.rating - a.rating);
 
   const field = [...championIds];
@@ -132,8 +139,10 @@ export function selectNationalField(teamStates, championIds) {
 
 export const REGIONS = ['East', 'West', 'South', 'Midwest'];
 
-// Distribute 64 overall-seeded teams into 4 regions of 16, snaking each seed
-// line so the regions are balanced. regions[r][line] has regional seed line+1.
+// Distribute 64 overall-seeded teams into 4 regions of 16 on the committee's
+// S-curve: each seed line is dealt across the regions, alternating direction, so
+// the strongest 1 seed is paired with the weakest 2 seed and the weakest 16.
+// regions[r][line] holds that region's seed number line+1.
 function assignRegions(seeded) {
   const regions = [[], [], [], []];
   for (let line = 0; line < 16; line++) {
@@ -146,10 +155,68 @@ function assignRegions(seeded) {
   return regions;
 }
 
+// Seed lines that share a path to the Sweet 16. Within a pod the four teams meet
+// each other in the first two rounds: 1/16 vs 8/9, 5/12 vs 4/13, and so on.
+const POD_LINES = [
+  [0, 15, 7, 8], // 1, 16, 8, 9
+  [4, 11, 3, 12], // 5, 12, 4, 13
+  [5, 10, 2, 13], // 6, 11, 3, 14
+  [6, 9, 1, 14], // 7, 10, 2, 15
+];
+
+// The committee never lets conference rivals meet early. Because our regular
+// season is a double round-robin, every same-conference pair has already played
+// twice — which under the real bracketing principles puts them off-limits to
+// each other until the Sweet 16.
+//
+// Fixed by hill-climbing on swaps WITHIN a seed line across regions, which is
+// the same tool the committee uses: moving a 12 seed from the East to the West
+// keeps the bracket's seed structure intact and costs only a little S-curve
+// precision, which the real committee also trades away for this rule.
+function separateConferences(regions) {
+  const confOf = (id) => TEAMS_BY_ID[id].conference;
+
+  const conflictsIn = (r) => {
+    let n = 0;
+    for (const pod of POD_LINES) {
+      const seen = new Set();
+      for (const line of pod) {
+        const c = confOf(regions[r][line]);
+        if (seen.has(c)) n++;
+        else seen.add(c);
+      }
+    }
+    return n;
+  };
+  const totalConflicts = () => regions.reduce((sum, _, r) => sum + conflictsIn(r), 0);
+
+  let best = totalConflicts();
+  for (let pass = 0; pass < 6 && best > 0; pass++) {
+    for (let line = 0; line < 16; line++) {
+      for (let r = 0; r < 4; r++) {
+        for (let other = r + 1; other < 4; other++) {
+          const a = regions[r][line];
+          const b = regions[other][line];
+          regions[r][line] = b;
+          regions[other][line] = a;
+          const after = totalConflicts();
+          if (after < best) {
+            best = after;
+          } else {
+            regions[r][line] = a; // no improvement, put them back
+            regions[other][line] = b;
+          }
+        }
+      }
+    }
+  }
+  return regions;
+}
+
 // The 64-team national bracket: four 16-team regions feeding a Final Four and
 // Championship. Regions 0,1 form the left half; 2,3 the right half.
 export function buildNationalBracket(seededTeamIds, startDate) {
-  const regions = assignRegions(seededTeamIds);
+  const regions = separateConferences(assignRegions(seededTeamIds));
   const games = [];
   const regionFinals = [];
   let regionLastDate = startDate;
