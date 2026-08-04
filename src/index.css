@@ -248,6 +248,40 @@ table { border-collapse: collapse; width: 100%; }
 .roster__hint { color: var(--muted); font-size: 13px; max-width: 720px; }
 .roster__note { color: var(--faint); font-size: 12px; margin-top: 12px; }
 
+/* Lineup chemistry report. Grades, never raw numbers — the six attributes are
+   hidden by design and this panel must show consequences, not inputs. */
+.chem { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; }
+.chem__head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.chem__title { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0; }
+.chem__total { margin-left: auto; font-size: 14px; font-weight: 800; cursor: help; }
+.chem__total.is-good { color: var(--win); }
+.chem__total.is-bad { color: var(--loss); }
+.chem__total.is-flat { color: var(--muted); }
+
+/* Two columns on wide screens, one on narrow — seven rows is a lot of vertical. */
+.chem__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 4px 24px; }
+.chem__row { display: flex; align-items: center; gap: 10px; padding: 3px 0; cursor: help; }
+.chem__label { font-size: 12px; color: var(--muted); width: 108px; flex-shrink: 0; }
+.chem__grade { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; width: 46px; text-align: right; flex-shrink: 0; }
+
+/* The bar is centred: everything left of the midline is a weakness. */
+.chem__bar { position: relative; flex: 1; height: 6px; min-width: 60px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.chem__bar::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border-strong); }
+.chem__fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; transition: left 120ms ease, width 120ms ease; }
+
+.chem__fill.is-great { background: var(--win); }
+.chem__fill.is-good { background: color-mix(in srgb, var(--win) 62%, var(--surface-2)); }
+.chem__fill.is-flat { background: var(--faint); }
+.chem__fill.is-bad { background: color-mix(in srgb, var(--loss) 62%, var(--surface-2)); }
+.chem__fill.is-awful { background: var(--loss); }
+.chem__grade.is-great { color: var(--win); }
+.chem__grade.is-good { color: color-mix(in srgb, var(--win) 75%, var(--muted)); }
+.chem__grade.is-flat { color: var(--faint); }
+.chem__grade.is-bad { color: color-mix(in srgb, var(--loss) 75%, var(--muted)); }
+.chem__grade.is-awful { color: var(--loss); }
+
+.chem__note { color: var(--faint); font-size: 12px; margin: 10px 0 0; max-width: 720px; }
+
 .roster__tablewrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .rostertable { font-size: 14px; }
 .rostertable th { text-align: center; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 10px; border-bottom: 1px solid var(--border); }

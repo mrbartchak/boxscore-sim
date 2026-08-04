@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { teamStrength, rotationMinutes } from '../engine/simulation.js';
 import { seasonAverages } from '../engine/players.js';
+import { lineupTerms, lineupFit, FIT_TERMS, fitGrade } from '../engine/lineup.js';
 import PlayerCard from './PlayerCard.jsx';
 
 const BENCH_LABELS = ['6th Man', '7th Man', '8th Man', '9th Man', '10th Man'];
@@ -73,11 +74,13 @@ export default function RosterView() {
           off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost).
         </p>
         <p className="roster__hint">
-          Players start out of position are rated for the spot they're filling, not their natural one — a
+          Players started out of position are rated for the spot they're filling, not their natural one — a
           Floor General slid to the two loses most of what makes him good. Sometimes it works the other way.
           Watch Team Rating as you shuffle.
         </p>
       </div>
+
+      <LineupReport ts={ts} />
 
       <section className="starters">
         <h3 className="starters__title">Starting Five</h3>
@@ -99,6 +102,53 @@ export default function RosterView() {
           : 'Season stats appear once games are played (shown as dashes until then).'}
       </p>
     </div>
+  );
+}
+
+// How the five on the floor fit together. This panel is the ONLY feedback the
+// game gives on chemistry — the six attributes behind it are hidden on purpose,
+// so this reports the consequence (what the unit is short of) and never the
+// inputs. Grades, not numbers, for the same reason: it should read like a
+// scouting note you argue with, not a spreadsheet you solve.
+function LineupReport({ ts }) {
+  const terms = lineupTerms(ts);
+  if (!terms) return null;
+  const total = lineupFit(ts);
+  const totalTone = total > 0.25 ? 'good' : total < -0.25 ? 'bad' : 'flat';
+
+  return (
+    <section className="chem">
+      <div className="chem__head">
+        <h3 className="chem__title">Lineup Chemistry</h3>
+        <span className={`chem__total is-${totalTone}`} title="Rating points this five gains or loses purely from how the pieces fit, on top of their individual ratings.">
+          {total >= 0 ? '+' : ''}{total.toFixed(1)} rating
+        </span>
+      </div>
+      <div className="chem__grid">
+        {FIT_TERMS.map(({ key, label, hint }) => {
+          const { word, tone, z } = fitGrade(key, terms[key]);
+          // Bar fills from the middle: left of centre is a weakness.
+          const w = Math.min(50, Math.abs(z) * 22);
+          return (
+            <div className="chem__row" key={key} title={hint}>
+              <span className="chem__label">{label}</span>
+              <span className="chem__bar">
+                <span
+                  className={`chem__fill is-${tone}`}
+                  style={{ left: z >= 0 ? '50%' : `${50 - w}%`, width: `${w}%` }}
+                />
+              </span>
+              <span className={`chem__grade is-${tone}`}>{word}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="chem__note">
+        Chemistry is about which five share the floor, not how good they are — a lineup can be all gold
+        and still fit badly. Every strength is paid for somewhere: the shooters who open the floor are
+        the ones who don't rebound.
+      </p>
+    </section>
   );
 }
 

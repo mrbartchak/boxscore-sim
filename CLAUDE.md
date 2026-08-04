@@ -15,6 +15,10 @@ game logic can be ported/served later (see Architecture).
 - `npm run calibrate -- [seasons]` — **run this after touching roster generation
   or any simulation weight.** Sims N full seasons headless and diffs the result
   against the historical record in `data/marchmadness.js`.
+- `npm run lineupfit -- [rosters]` — **run this after touching any weight in
+  `engine/lineup.js`.** Re-derives every hard-coded constant in that file, checks
+  chemistry is uncorrelated with prestige, and runs forced-lineup-shape scenarios
+  to confirm the terms still conflict. Then re-run `calibrate`.
 
 Headless engine checks: the store + engine are pure ESM importable in Node
 (no JSX), so a `node script.mjs` that imports `src/store/useGame.js`, calls
@@ -42,7 +46,8 @@ data/  →  engine/  →  store/  →  components/
   is the calibration target the sim constants were tuned against.
 - `engine/random.js` — RNG helpers (`gaussian` (Box-Muller), `shuffle`, `weightedIndex`, `pick`, `clamp`, `round1`).
 - `engine/players.js` — `generateRoster(team)`, `overallFrom()`, `effectiveOverall()`, `archetypeOf()`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
-- `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `slotPositions()`, `teamStrength()`, `simulateGame()`.
+- `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`, `rollPostseasonForm()`. Re-exports `slotPositions()`.
+- `engine/lineup.js` — five-man unit chemistry: `lineupFit()` (rating points, added by `teamStrength`), `lineupTerms()`, `slotPositions()`, plus `FIT_TERMS`/`fitGrade()` for the UI.
 - `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
 - `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
@@ -141,8 +146,79 @@ deciding how much edge the player should keep.
 The card's big number and tier colour stay tied to the NATURAL overall so a card
 doesn't change identity mid-drag; the `pcard__fit` badge carries the consequence.
 
-Still not wired into outcomes: unit-fit terms (spacing, creation, rim
-protection, perimeter containment) — see the next-steps discussion.
+### Lineup chemistry (`engine/lineup.js`) — live
+What the five on the floor are worth TOGETHER, added to `teamStrength` as
+`lineupFit(teamState)` in rating points. Seven terms: spacing, interior scoring,
+shot creation, ball sharing, rim protection, perimeter D, rebounding.
+
+**The load-bearing idea.** Every term reads a player's attributes relative to
+**his own overall**, not to the lineup's or the league's. Because overall is a
+position-weighted dot product, the position-weighted sum of one player's edges
+is *exactly zero* — each player carries a fixed budget of shape, and a spike is
+provably paid for inside the same player. The terms spend that budget through
+different curves, so they conflict structurally rather than by tuning. Swapping
+a big for a shooter buys spacing with the glass, automatically.
+
+**Three inputs, no double-counting** — keep it this way:
+- how good the five are → minutes-weighted rating
+- where they stand → positional fit (`effectiveOverall`)
+- which shapes share the floor → chemistry
+
+Per-player centering isn't cosmetic; it closed two exploits found by measurement.
+Centering on the *lineup mean* let a five of weaker players inflate every term at
+once, so chemistry paid you to bench your best player. Centering on *effective*
+(post-slot) overalls let a misaligned lineup lower its own baseline, so chemistry
+paid you to misalign. Both showed up as impossible-looking positive deltas in
+`npm run lineupfit` before they were understood.
+
+Shape notes worth keeping: spacing is a count of threats a defense must honor
+(logistic per player, then a log — the 1st shooter is worth everything, the 4th
+almost nothing) and is deliberately asymmetric, since five shooters gain less
+than five non-shooters lose. Interior scoring is a genuine *interaction*, best
+paint threat × spacing, netted by `PAINT_BASE` so it means "leans on the paint
+more than usual" rather than degenerating into a scaled copy of spacing. Rim
+protection keys on the best defender (one shot-blocker covers for four);
+perimeter D keys on the **worst** (offenses hunt the weakest man). Ball sharing
+is penalty-only and zero for 99% of lineups — it exists to punish stacking
+ball-dominant archetypes.
+
+**Measured, not guessed** — `npm run lineupfit` derives every hard-coded constant
+(`FIT_CENTER`, `PAINT_BASE`, `CLASH_BUDGET`, and each term's `base`/`scale`) and
+re-run it after changing any weight, then re-run `calibrate`. Current state:
+- chemistry averages ~0 league-wide (sd ~0.47 rating), `corr(prestige, chemistry)
+  = 0.02` — it must NOT correlate with prestige or it just amplifies talent
+- one swap moves chemistry ~1.2 rating across its range (max 3.4)
+- benching your best shooter for an equally-rated non-shooter costs ~0.24 rating
+  and is worse on 74% of rosters — the mechanic the design is actually about
+- forced-shape checks all land negative: five bigs -0.11, five shooters -0.08,
+  no creator -0.38, and top-5-talent-regardless-of-position ~0.00
+
+Effect on the bracket, A/B over **400 seasons each** (1,600 games per seed line,
+so ~1.2pt standard error — shorter runs are noise, and a 150-season pass wrongly
+suggested a much larger win):
+
+| line | without | with | historical |
+|------|---------|------|------------|
+| 5v12 | +7.9 | **+3.9** | 65.0% |
+| 8v9  | +5.0 | **+3.8** | 49.4% |
+| 3v14 | -0.8 | -2.6 | 85.6% |
+| 7v10 | -2.5 | -3.5 | 61.3% |
+
+Mean absolute first-round error 3.78 → 3.36. 1-seed title share is **unchanged**
+at 71.8%. The mechanism is simple and worth remembering: chemistry adds strength
+variance that is uncorrelated with seed, so every line gets pulled toward 50%.
+That helps where we were too chalky (5v12, 8v9 — the two residuals this file has
+always documented) and mildly hurts where we were already below history (3v14,
+7v10). It is a real but modest gain, concentrated almost entirely on 5v12.
+
+`fitGrade(key, value)` grades each term against **its own** league distribution.
+Do not give the terms a shared scale — Shot Creation averages +0.49 and Perimeter
+D averages -0.46, so one scale would tell every user their creation is elite and
+their perimeter defense is a disaster.
+
+The `LineupReport` panel in `RosterView` is the ONLY feedback the game gives on
+any of this, since the six attributes are hidden. It shows word grades and
+centered bars, never raw numbers — consequences, not inputs.
 
 ### Roster generation (`generateRoster`) — four stages, in order
 1. **Team talent level** — `prestigeToOverall(prestige) + gaussian(0, 3.6)`. The
@@ -179,10 +255,17 @@ sub-65-prestige programs.
   games) where the real committee seeds a four-month-old resume; this models that
   gap, and without it 1 seeds win ~78% of titles instead of the historical ~63%.
 
-Known residual: 5v12 and 8v9 come out ~5-7 points chalkier than history, because
-the real committee under-seeds mid-major champions and the 8/9 line is a coin
-flip by construction. Our seeding is strictly merit-ordered, so it can't
-reproduce that. Everything else lands within ~4 points.
+Known residual: 5v12 and 8v9 still come out ~4 points chalkier than history
+(down from ~5-8 before lineup chemistry), because the real committee under-seeds
+mid-major champions and the 8/9 line is a coin flip by construction. Our seeding
+is strictly merit-ordered, so it can't reproduce that. Everything else lands
+within ~4 points; mean absolute first-round error is ~3.4.
+
+Also known: 1 seeds win ~72% of titles against a historical 62.5%. Lineup
+chemistry did NOT move this, and neither did anything else tried so far. **Only
+trust A/B numbers from 300+ season runs** — at 150 seasons the seed-line noise is
+±3-6 points, which is larger than most effects being measured here, and it has
+produced convincing-looking phantom results more than once.
 
 ### Player stats
 - `projPpg/projApg/projReb` — internal sim weights derived from `attrs` +
@@ -234,3 +317,15 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
   engine depend on this; adding non-conference games means reworking the SOS
   term in `powerRating` into a real opponent-average.
 - Conference tournaments are 8 teams for every conference regardless of size.
+- Chemistry scores the STARTING FIVE only; the bench's 50 minutes are treated as
+  neutral-fit (`FIT_MINUTES_SHARE = 0.75`). Modelling a real second unit means
+  deciding which five actually share the floor, which the minutes model doesn't
+  currently express.
+- `defaultLineup` is not a chemistry optimiser — AI teams take the best player at
+  each position and leave the fit value on the table. That gap IS the player's
+  edge (~1.2 rating of swing per swap); don't close it without deciding how much
+  edge to keep.
+- Natural next layers, in rough order: minutes budget + stamina/fouls; a
+  system/scheme choice (pace, zone, press) that re-weights the chemistry terms;
+  role satisfaction (a high-usage archetype buried on the bench sulks);
+  multi-season development using `potential`.

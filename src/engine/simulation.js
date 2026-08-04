@@ -3,6 +3,7 @@
 
 import { gaussian, clamp, rand } from './random.js';
 import { POSITIONS, effectiveOverall } from './players.js';
+import { lineupFit, slotPositions } from './lineup.js';
 import {
   MARGIN_SD_VS_SPREAD,
   TYPICAL_GAME_TOTAL,
@@ -68,15 +69,9 @@ export function defaultLineup(players) {
   return { starters, bench, starId };
 }
 
-// Which lineup slot each starter is filling. Bench players aren't assigned a
-// position — a bench unit is fluid, so reserves are never out of position.
-export function slotPositions(teamState) {
-  const out = {};
-  teamState.rotation.starters.forEach((s) => {
-    if (s.id) out[s.id] = s.pos;
-  });
-  return out;
-}
+// Lives in lineup.js (chemistry needs it too); re-exported so callers that think
+// of it as a rotation concept don't have to know that.
+export { slotPositions };
 
 // Minutes per player id, derived from starter/bench slot position.
 export function rotationMinutes(teamState) {
@@ -101,6 +96,11 @@ export function rotationMinutes(teamState) {
 // gives up sliding to the two. `defaultLineup` never plays anyone out of
 // position, so this is worth exactly zero until a human moves someone — the
 // league-wide calibration is untouched by design.
+//
+// `lineupFit` then adds what the five are worth TOGETHER — spacing, creation,
+// rim protection and the rest (see lineup.js). It is centered on the league's
+// default lineups, so it averages zero across the league and only rewards
+// building a five that fits better than a typical one.
 export function teamStrength(teamState) {
   const mins = rotationMinutes(teamState);
   const slots = slotPositions(teamState);
@@ -113,7 +113,7 @@ export function teamStrength(teamState) {
   });
   const star = teamState.players.find((p) => p.id === teamState.rotation.starId);
   const starBump = star ? (star.overall - 60) * 0.02 : 0;
-  return weighted + starBump + experience + (teamState.form ?? 0);
+  return weighted + starBump + experience + lineupFit(teamState) + (teamState.form ?? 0);
 }
 
 // Re-roll every team's form. Called at each postseason phase change and ALWAYS

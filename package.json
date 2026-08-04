@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "calibrate": "node scripts/calibrate.mjs"
+    "calibrate": "node scripts/calibrate.mjs",
+    "lineupfit": "node scripts/lineupfit.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
