@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
 import { TeamBadge, contrastColor } from './common.jsx';
-import ScheduleView from './ScheduleView.jsx';
+import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
 
@@ -26,6 +27,7 @@ export default function Layout() {
   const phase = useGame((s) => s.phase);
   const activeView = useGame((s) => s.activeView);
   const setView = useGame((s) => s.setView);
+  const seasonNumber = useGame((s) => s.seasonNumber);
 
   const team = TEAMS_BY_ID[userTeamId];
 
@@ -57,15 +59,49 @@ export default function Layout() {
 
         <div className="topbar__status">
           <div className="topbar__phase">{PHASE_LABEL[phase]}</div>
-          <div className="topbar__date">{formatDate(currentDate)}</div>
+          <div className="topbar__date">Season {seasonNumber} · {formatDate(currentDate)}</div>
         </div>
+
+        <SeasonControls phase={phase} />
       </header>
 
       <main className="content">
-        {activeView === 'schedule' && <ScheduleView />}
+        {activeView === 'schedule' && <SeasonView />}
         {activeView === 'roster' && <RosterView />}
         {activeView === 'stats' && <StatsView />}
       </main>
+    </div>
+  );
+}
+
+// New Season (once the title game is in the books) + a two-step abandon, since
+// there's no persistence — one stray click would wipe the whole save.
+function SeasonControls({ phase }) {
+  const newSeason = useGame((s) => s.newSeason);
+  const abandonSeason = useGame((s) => s.abandonSeason);
+  const stopSim = useGame((s) => s.stopSim);
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="topbar__actions">
+        <span className="topbar__confirm">Abandon this season?</span>
+        <button className="btn btn--danger" onClick={() => { stopSim(); abandonSeason(); }}>Yes, quit</button>
+        <button className="btn" onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="topbar__actions">
+      {phase === 'DONE' && (
+        <button className="btn btn--primary" onClick={() => { stopSim(); newSeason(); }}>
+          New Season →
+        </button>
+      )}
+      <button className="btn btn--ghost" onClick={() => setConfirming(true)} title="Quit and pick a new program">
+        Abandon Season
+      </button>
     </div>
   );
 }

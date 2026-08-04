@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { TEAMS, CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
 import { generateRoster } from '../engine/players.js';
-import { defaultRotation, simulateGame } from '../engine/simulation.js';
+import { defaultLineup, simulateGame, rollPostseasonForm } from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
 import {
   seedConferenceTournaments,
@@ -21,12 +21,13 @@ function freshTeamState(teamId) {
   return {
     teamId,
     players,
-    rotation: defaultRotation(players),
+    rotation: defaultLineup(players),
     record: { w: 0, l: 0 },
     confRecord: { w: 0, l: 0 },
     pf: 0,
     pa: 0,
     streak: 0, // + wins, - losses
+    form: 0, // postseason peak/slump, rolled when the brackets are drawn
   };
 }
 
@@ -58,27 +59,39 @@ function applyResult(ts, box, teamPts, oppPts, won, isConf) {
   };
 }
 
-export const useGame = create((set, get) => ({
+// Everything that resets between seasons. `version` and `userTeamId` live
+// outside this so a new season can keep the program and keep re-rendering.
+const BLANK_SEASON = {
   phase: 'SELECT', // SELECT | REGULAR | CONF_TOURNEY | NATIONAL | DONE
-  userTeamId: null,
   teamStates: {},
   games: {}, // id -> game
   gameIdsByDate: {}, // iso -> [id]
   currentDate: PRESEASON,
-  seasonStart: SEASON_START,
   lastRegularDate: null,
   lastConfDate: null,
   simulating: false,
   simTarget: null,
-  version: 0,
   champions: {}, // conference -> teamId
   nationalField: null, // [teamId] seeded
   nationalChampionId: null,
   activeView: 'schedule', // schedule | roster | stats
+  showReveal: false,
+  showChampBanner: false,
+  revealRandom: false,
+};
+
+export const useGame = create((set, get) => ({
+  ...BLANK_SEASON,
+  userTeamId: null,
+  seasonStart: SEASON_START,
+  seasonNumber: 1,
+  version: 0,
 
   setView: (v) => set({ activeView: v }),
+  dismissReveal: () => set({ showReveal: false }),
+  dismissChampBanner: () => set({ showChampBanner: false }),
 
-  selectTeam: (teamId) => {
+  selectTeam: (teamId, { random = false } = {}) => {
     const teamStates = {};
     const teamIdsByConf = {};
     CONFERENCES.forEach((c) => (teamIdsByConf[c] = []));
@@ -96,67 +109,93 @@ export const useGame = create((set, get) => ({
     });
 
     set({
+      ...BLANK_SEASON,
       userTeamId: teamId,
       teamStates,
       games: gamesById,
       gameIdsByDate,
       lastRegularDate,
-      currentDate: PRESEASON,
       phase: 'REGULAR',
-      activeView: 'schedule',
+      showReveal: true,
+      revealRandom: random,
       version: get().version + 1,
     });
   },
 
+  // Same program, brand-new season: fresh rosters league-wide and a new schedule.
+  newSeason: () => {
+    const { userTeamId, seasonNumber } = get();
+    if (!userTeamId) return;
+    get().selectTeam(userTeamId);
+    set({ seasonNumber: seasonNumber + 1 });
+  },
+
+  // Drop the current save entirely and go back to team selection.
+  abandonSeason: () =>
+    set({ ...BLANK_SEASON, userTeamId: null, seasonNumber: 1, version: get().version + 1 }),
+
   // ---- Rotation management (user team) ----
-  toggleStarter: (playerId) =>
-    set((s) => {
-      const ts = s.teamStates[s.userTeamId];
-      let starters = ts.rotation.starters;
-      if (starters.includes(playerId)) {
-        starters = starters.filter((id) => id !== playerId);
-      } else if (starters.length < 5) {
-        starters = [...starters, playerId];
-      } else {
-        return {};
-      }
-      return updateUserRotation(s, { starters });
-    }),
-
   setStar: (playerId) =>
-    set((s) => updateUserRotation(s, { starId: playerId })),
+    set((s) => setUserRotation(s, { ...s.teamStates[s.userTeamId].rotation, starId: playerId })),
 
-  setMinutes: (playerId, minutes) =>
+  // Swap the players occupying two lineup slots (starters or bench).
+  swapLineup: (fromSlot, toSlot) =>
     set((s) => {
-      const ts = s.teamStates[s.userTeamId];
-      const m = Math.max(0, Math.min(40, minutes));
-      return updateUserRotation(s, {
-        minutes: { ...ts.rotation.minutes, [playerId]: m },
-      });
+      if (fromSlot === toSlot) return {};
+      const rot = cloneRotation(s.teamStates[s.userTeamId].rotation);
+      const a = readSlot(rot, fromSlot);
+      const b = readSlot(rot, toSlot);
+      writeSlot(rot, fromSlot, b);
+      writeSlot(rot, toSlot, a);
+      return setUserRotation(s, rot);
     }),
 
   // ---- Simulation ----
-  simulateTo: (targetDate) => {
+  // Run the day-by-day loop on a timer until `shouldStop(state)` is true. The
+  // loop also stops at any phase boundary so the postseason never auto-runs.
+  _runSim: (shouldStop) => {
     if (get().simulating) return;
-    if (targetDate <= get().currentDate) return;
-    set({ simulating: true, simTarget: targetDate });
-
+    const startPhase = get().phase;
+    set({ simulating: true });
     const tick = () => {
-      const s = get();
-      if (!s.simulating) return;
+      if (!get().simulating) return;
       get()._stepDay();
       const after = get();
-      // Any game that is scheduled with known participants but not yet played.
       const anyPending = Object.values(after.games).some(
         (g) => !g.played && g.homeId && g.awayId
       );
-      if (after.currentDate >= after.simTarget || after.phase === 'DONE' || !anyPending) {
-        set({ simulating: false, simTarget: null });
+      const phaseChanged = after.phase !== startPhase;
+      if (after.phase === 'DONE' || !anyPending || phaseChanged || shouldStop(after)) {
+        set({ simulating: false });
         return;
       }
-      setTimeout(tick, SIM_SPEED_MS);
+      // Brief pause on days the user's own team plays, so results register.
+      const userPlayed = (after.gameIdsByDate[after.currentDate] || []).some((id) => {
+        const g = after.games[id];
+        return g && g.played && (g.homeId === after.userTeamId || g.awayId === after.userTeamId);
+      });
+      setTimeout(tick, userPlayed ? 360 : SIM_SPEED_MS);
     };
     setTimeout(tick, SIM_SPEED_MS);
+  },
+
+  simulateTo: (targetDate) => {
+    if (targetDate <= get().currentDate) return;
+    get()._runSim((st) => st.currentDate >= targetDate);
+  },
+
+  // Simulate the next round of the current tournament phase (one slate of games).
+  simulateRound: () => {
+    const phase = get().phase;
+    const target = nextPhaseGameDate(get(), phase);
+    if (!target) return;
+    get()._runSim((st) => st.currentDate >= target || st.phase !== phase);
+  },
+
+  // Simulate the rest of the current tournament phase (until the phase changes).
+  simulateTournament: () => {
+    const phase = get().phase;
+    get()._runSim((st) => st.phase !== phase);
   },
 
   stopSim: () => set({ simulating: false, simTarget: null }),
@@ -175,7 +214,10 @@ export const useGame = create((set, get) => ({
 
         const home = teamStates[g.homeId];
         const away = teamStates[g.awayId];
-        const result = simulateGame(home, away, { neutral: g.neutral });
+        const result = simulateGame(home, away, {
+          neutral: g.neutral,
+          bracket: g.phase === 'CONF_TOURNEY' || g.phase === 'NATIONAL',
+        });
 
         const homeWon = result.winnerId === g.homeId;
         const isConf = g.phase === 'REGULAR' || g.phase === 'CONF_TOURNEY';
@@ -221,6 +263,8 @@ export const useGame = create((set, get) => ({
         patch.gameIdsByDate = appendGames(games, s.gameIdsByDate, tGames);
         patch.phase = 'CONF_TOURNEY';
         patch.lastConfDate = lastDate;
+        // Seeds are locked in above; now find out who is actually peaking.
+        patch.teamStates = rollPostseasonForm(teamStates);
       } else if (s.phase === 'CONF_TOURNEY' && allPlayed('CONF_TOURNEY')) {
         // Conference champions = winners of each conference final.
         const champions = {};
@@ -236,6 +280,9 @@ export const useGame = create((set, get) => ({
         patch.phase = 'NATIONAL';
         patch.champions = champions;
         patch.nationalField = field;
+        // Re-roll AFTER selection and seeding — the committee never gets to see
+        // who is about to get hot.
+        patch.teamStates = rollPostseasonForm(teamStates);
       } else if (s.phase === 'NATIONAL' && allPlayed('NATIONAL')) {
         const finalGame = Object.values(games).find(
           (g) => g.phase === 'NATIONAL' && g.played && !g.nextGameId
@@ -243,6 +290,7 @@ export const useGame = create((set, get) => ({
         if (finalGame) {
           patch.nationalChampionId = finalGame.result.winnerId;
           patch.phase = 'DONE';
+          patch.showChampBanner = true;
         }
       }
 
@@ -250,15 +298,44 @@ export const useGame = create((set, get) => ({
     }),
 }));
 
-function updateUserRotation(s, changes) {
+function setUserRotation(s, rotation) {
   const ts = s.teamStates[s.userTeamId];
   return {
-    teamStates: {
-      ...s.teamStates,
-      [s.userTeamId]: { ...ts, rotation: { ...ts.rotation, ...changes } },
-    },
+    teamStates: { ...s.teamStates, [s.userTeamId]: { ...ts, rotation } },
     version: s.version + 1,
   };
+}
+
+function cloneRotation(rot) {
+  return {
+    starters: rot.starters.map((x) => ({ ...x })),
+    bench: [...rot.bench],
+    starId: rot.starId,
+  };
+}
+
+// Slot ids: "S:PG".."S:C" for starters, "B:0".."B:4" for bench.
+function readSlot(rot, slot) {
+  const [type, key] = slot.split(':');
+  if (type === 'S') return rot.starters.find((s) => s.pos === key).id;
+  return rot.bench[Number(key)];
+}
+
+function writeSlot(rot, slot, playerId) {
+  const [type, key] = slot.split(':');
+  if (type === 'S') rot.starters.find((s) => s.pos === key).id = playerId;
+  else rot.bench[Number(key)] = playerId;
+}
+
+// Earliest date of an unplayed, ready-to-play game in the given phase.
+function nextPhaseGameDate(state, phase) {
+  let min = null;
+  Object.values(state.games).forEach((g) => {
+    if (g.phase === phase && !g.played && g.homeId && g.awayId) {
+      if (!min || g.date < min) min = g.date;
+    }
+  });
+  return min;
 }
 
 // Append newly generated games into the games map (mutated in place) and return

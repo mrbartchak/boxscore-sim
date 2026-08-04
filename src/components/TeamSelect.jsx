@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { teamsByConference, TEAMS_BY_ID } from '../data/teams.js';
+import { teamsByConference, TEAMS_BY_ID, TEAMS } from '../data/teams.js';
 import { useGame } from '../store/useGame.js';
 import { TeamBadge, PrestigeMeter, contrastColor } from './common.jsx';
 
@@ -10,12 +10,18 @@ export default function TeamSelect() {
   const selectTeam = useGame((s) => s.selectTeam);
   const team = selected ? TEAMS_BY_ID[selected] : null;
 
+  const pickRandom = () => {
+    const t = TEAMS[Math.floor(Math.random() * TEAMS.length)];
+    selectTeam(t.id, { random: true });
+  };
+
   return (
     <div className="select">
       <header className="select__hero">
         <div className="select__badge">🏀</div>
         <h1>College Hoops Dynasty</h1>
         <p>Pick a program to lead. Powerhouses come stacked — mid-majors, you'll have to build it.</p>
+        <button className="btn btn--lg select__random" onClick={pickRandom}>🎲 Random Team</button>
       </header>
 
       <div className="select__conferences">
