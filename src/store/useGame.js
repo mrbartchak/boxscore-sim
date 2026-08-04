@@ -58,28 +58,37 @@ function applyResult(ts, box, teamPts, oppPts, won, isConf) {
   };
 }
 
-export const useGame = create((set, get) => ({
+// Everything that resets between seasons. `version` and `userTeamId` live
+// outside this so a new season can keep the program and keep re-rendering.
+const BLANK_SEASON = {
   phase: 'SELECT', // SELECT | REGULAR | CONF_TOURNEY | NATIONAL | DONE
-  userTeamId: null,
   teamStates: {},
   games: {}, // id -> game
   gameIdsByDate: {}, // iso -> [id]
   currentDate: PRESEASON,
-  seasonStart: SEASON_START,
   lastRegularDate: null,
   lastConfDate: null,
   simulating: false,
   simTarget: null,
-  version: 0,
   champions: {}, // conference -> teamId
   nationalField: null, // [teamId] seeded
   nationalChampionId: null,
   activeView: 'schedule', // schedule | roster | stats
   showReveal: false,
+  showChampBanner: false,
   revealRandom: false,
+};
+
+export const useGame = create((set, get) => ({
+  ...BLANK_SEASON,
+  userTeamId: null,
+  seasonStart: SEASON_START,
+  seasonNumber: 1,
+  version: 0,
 
   setView: (v) => set({ activeView: v }),
   dismissReveal: () => set({ showReveal: false }),
+  dismissChampBanner: () => set({ showChampBanner: false }),
 
   selectTeam: (teamId, { random = false } = {}) => {
     const teamStates = {};
@@ -99,22 +108,30 @@ export const useGame = create((set, get) => ({
     });
 
     set({
+      ...BLANK_SEASON,
       userTeamId: teamId,
       teamStates,
       games: gamesById,
       gameIdsByDate,
       lastRegularDate,
-      currentDate: PRESEASON,
       phase: 'REGULAR',
-      activeView: 'schedule',
       showReveal: true,
       revealRandom: random,
-      champions: {},
-      nationalField: null,
-      nationalChampionId: null,
       version: get().version + 1,
     });
   },
+
+  // Same program, brand-new season: fresh rosters league-wide and a new schedule.
+  newSeason: () => {
+    const { userTeamId, seasonNumber } = get();
+    if (!userTeamId) return;
+    get().selectTeam(userTeamId);
+    set({ seasonNumber: seasonNumber + 1 });
+  },
+
+  // Drop the current save entirely and go back to team selection.
+  abandonSeason: () =>
+    set({ ...BLANK_SEASON, userTeamId: null, seasonNumber: 1, version: get().version + 1 }),
 
   // ---- Rotation management (user team) ----
   setStar: (playerId) =>
@@ -264,6 +281,7 @@ export const useGame = create((set, get) => ({
         if (finalGame) {
           patch.nationalChampionId = finalGame.result.winnerId;
           patch.phase = 'DONE';
+          patch.showChampBanner = true;
         }
       }
 

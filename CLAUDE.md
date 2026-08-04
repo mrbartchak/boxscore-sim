@@ -37,6 +37,9 @@ data/  →  engine/  →  store/  →  components/
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
 - `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
 - `store/useGame.js` — see below.
+- `audio/sfx.js` — Web Audio reveal SFX, synthesized (no asset files). One
+  fanfare per `overallTier`; sits outside `engine/` because it touches browser
+  APIs. Exports `playRevealSfx(tier)`, `playTeamSfx()`, `setMuted`/`isMuted`.
 - `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `PlayerCard`, `common.jsx`.
 
 ## Key domain concepts
@@ -46,6 +49,13 @@ data/  →  engine/  →  store/  →  components/
 (`SeasonView`) swaps content by phase: calendar (REGULAR) → conference bracket
 (CONF_TOURNEY) → Selection Sunday gate + national bracket (NATIONAL/DONE). The
 bracket lives ONLY here, not in Stats.
+
+`BLANK_SEASON` in the store is the single source of truth for "what resets
+between seasons". `newSeason()` re-runs `selectTeam` with the current program
+(fresh rosters league-wide, `seasonNumber++`); `abandonSeason()` does the same
+but drops back to `SELECT`. Anything that should survive a new season
+(`userTeamId`, `seasonNumber`, `version`, `seasonStart`) must stay OUT of
+`BLANK_SEASON`.
 
 ### The simulation loop
 `_stepDay()` advances the calendar ONE day, sims all games on that date across
@@ -92,7 +102,8 @@ middle. Region games carry `region` (0–3); FF games carry `ffRegions`.
 
 ## Known limitations / possible next steps
 - **No persistence** — refresh resets everything. (Postgres/localStorage TBD.)
-- **One season only** — no multi-year dynasty, recruiting, or player progression yet.
+- **No true dynasty** — `newSeason()` regenerates every roster from scratch; no
+  recruiting, player progression, or carry-over history between seasons yet.
 - Drag-and-drop uses native HTML5 DnD → **mouse only, not touch**.
 - Season calendar is date-compressed (title game lands ~late Feb, not April).
 - When adding a conference, keep it **≥8 teams** — `seedConferenceTournaments`

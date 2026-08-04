@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
-import { careerAverages, overallTier } from '../engine/players.js';
+import { careerAverages, overallTier, POSITIONS } from '../engine/players.js';
 import { TeamBadge, contrastColor } from './common.jsx';
+import { playRevealSfx, playTeamSfx, isMuted, setMuted } from '../audio/sfx.js';
 import PlayerCard from './PlayerCard.jsx';
 
 // Higher tiers dwell longer so the reveal builds to the best player.
@@ -16,13 +17,16 @@ export default function RosterReveal() {
 
   const team = TEAMS_BY_ID[userTeamId];
   const byId = Object.fromEntries(ts.players.map((p) => [p.id, p]));
-  // Starters, weakest first, so the top tier lands last with the biggest pop.
-  const starters = ts.rotation.starters
-    .map((s) => byId[s.id])
-    .sort((a, b) => a.overall - b.overall);
+  // Always PG → C, so the lineup reads like a starting five being announced.
+  const starters = POSITIONS.map((pos) => byId[ts.rotation.starters.find((s) => s.pos === pos).id]);
 
   const [teamShown, setTeamShown] = useState(!revealRandom);
   const [revealed, setRevealed] = useState(0);
+  const [mute, setMute] = useState(isMuted());
+  // Effects re-run on re-render (and twice under StrictMode); these make each
+  // cue fire exactly once.
+  const sounded = useRef(0); // highest card index already sounded
+  const teamSounded = useRef(false);
 
   useEffect(() => {
     if (!revealRandom) return;
@@ -37,10 +41,36 @@ export default function RosterReveal() {
     return () => clearTimeout(t);
   }, [teamShown, revealed, starters]);
 
+  useEffect(() => {
+    if (!teamShown || teamSounded.current) return;
+    teamSounded.current = true;
+    playTeamSfx();
+  }, [teamShown]);
+
+  // Sound the card that just flipped; its rarity picks the fanfare.
+  useEffect(() => {
+    if (!teamShown || revealed === 0 || revealed <= sounded.current) return;
+    sounded.current = revealed;
+    playRevealSfx(overallTier(starters[revealed - 1].overall));
+  }, [teamShown, revealed, starters]);
+
+  const toggleMute = () => {
+    const next = !mute;
+    setMuted(next);
+    setMute(next);
+  };
+
   const allShown = revealed >= starters.length;
 
   return (
     <div className="reveal" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
+      <button
+        className="btn btn--icon reveal__mute"
+        onClick={toggleMute}
+        title={mute ? 'Unmute reveal sounds' : 'Mute reveal sounds'}
+      >
+        {mute ? '🔇' : '🔊'}
+      </button>
       <div className="reveal__inner">
         <div className={`reveal__team ${teamShown ? 'is-shown' : ''}`}>
           {teamShown ? (
@@ -62,7 +92,7 @@ export default function RosterReveal() {
             <div className="reveal__rostertitle">Your Starting Five</div>
             <div className="reveal__cards">
               {starters.map((p, i) => {
-                if (i >= revealed) return <div key={p.id} className="reveal__placeholder" />;
+                if (i >= revealed) return <div key={p.id} className="reveal__placeholder">{POSITIONS[i]}</div>;
                 const tier = overallTier(p.overall);
                 return (
                   <div key={p.id} className={`reveal__cardwrap reveal-anim--${tier}`}>
