@@ -3,22 +3,78 @@
 
 import { FIRST_NAMES, LAST_NAMES } from '../data/names.js';
 import { rand, randInt, pick, shuffle, weightedIndex, gaussian, clamp, round1 } from './random.js';
+import {
+  ATTRIBUTES,
+  ARCHETYPES,
+  ARCHETYPES_BY_ID,
+  POSITION_WEIGHTS,
+} from '../data/archetypes.js';
 
 export const CLASSES = ['FR', 'SO', 'JR', 'SR'];
 export const CLASS_LABEL = { FR: 'Freshman', SO: 'Sophomore', JR: 'Junior', SR: 'Senior' };
 export const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
-// Positional archetypes: how a player's overall translates into a stat profile.
-// scoring/assist/rebound are relative weights within the position.
-const ARCHETYPE = {
-  PG: { score: 1.0, assist: 1.8, rebound: 0.5 },
-  SG: { score: 1.2, assist: 0.9, rebound: 0.6 },
-  SF: { score: 1.1, assist: 0.8, rebound: 1.0 },
-  PF: { score: 1.0, assist: 0.5, rebound: 1.4 },
-  C: { score: 0.95, assist: 0.4, rebound: 1.7 },
-};
+const ATTR_MIN = 25;
+const ATTR_MAX = 99;
 
 let _pid = 0;
+
+// A player's overall is DERIVED from his attributes, weighted for the position
+// he plays. Nothing stores it independently, so the moment lineup logic starts
+// caring about position fit, moving a center to the wing can change what he's
+// worth without any extra bookkeeping.
+export function overallFrom(attrs, position) {
+  const w = POSITION_WEIGHTS[position];
+  return Math.round(ATTRIBUTES.reduce((sum, a) => sum + attrs[a] * w[a], 0));
+}
+
+export function archetypeOf(player) {
+  return ARCHETYPES_BY_ID[player.archetype];
+}
+
+// Archetypes eligible for a player of this position and talent level. Elite
+// shapes are gated behind `minOverall` so "Unicorn" stays a thing that happens
+// to a roster rather than a label; `maxOverall` keeps Raw Project off the best
+// player in the country.
+function pickArchetype(position, overall) {
+  const pool = ARCHETYPES.filter(
+    (a) =>
+      a.positions.includes(position) &&
+      overall >= (a.minOverall ?? 0) &&
+      overall <= (a.maxOverall ?? 99)
+  );
+  return pool[weightedIndex(pool.map((a) => a.weight))];
+}
+
+// Build an attribute set of the given SHAPE that grades out at exactly `target`.
+// The re-centering is what keeps roster generation calibrated: the talent ladder
+// still decides how good everyone is, and the archetype only decides where that
+// talent sits. Clamped attributes push their leftover onto the others so a 96
+// Sniper still grades 96 once his outside rating hits the ceiling.
+function buildAttributes(target, position, archetype) {
+  const attrs = {};
+  ATTRIBUTES.forEach((a) => {
+    attrs[a] = clamp(target + (archetype.shape[a] ?? 0) + gaussian(0, 2.6), ATTR_MIN, ATTR_MAX);
+  });
+
+  const w = POSITION_WEIGHTS[position];
+  for (let pass = 0; pass < 6; pass++) {
+    const delta = target - ATTRIBUTES.reduce((s, a) => s + attrs[a] * w[a], 0);
+    if (Math.abs(delta) < 0.05) break;
+    // Spread the correction over attributes that still have room to move.
+    const movable = ATTRIBUTES.filter(
+      (a) => (delta > 0 ? attrs[a] < ATTR_MAX : attrs[a] > ATTR_MIN)
+    );
+    const share = movable.reduce((s, a) => s + w[a], 0);
+    if (!share) break;
+    movable.forEach((a) => {
+      attrs[a] = clamp(attrs[a] + delta / share, ATTR_MIN, ATTR_MAX);
+    });
+  }
+
+  ATTRIBUTES.forEach((a) => (attrs[a] = Math.round(attrs[a])));
+  return attrs;
+}
 
 function makeName() {
   return `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
@@ -52,24 +108,44 @@ function rollClass(p) {
   return CLASSES[weightedIndex(CLASS_MIX_ELITE.map((e, i) => e * p + CLASS_MIX_SMALL[i] * (1 - p)))];
 }
 
-function generatePlayer(position, overall, cls, isStar) {
-  const arch = ARCHETYPE[position];
+// How far an attribute sticks out relative to the player's own level, sharpened
+// by `power`. This is what makes the stat line follow the archetype instead of
+// the position: a Floor General leads his team in assists because his
+// playmaking towers over the rest of his game, not because he is listed at PG.
+const spike = (attr, overall, power) =>
+  Math.pow(clamp(attr / Math.max(overall, 1), 0.55, 1.55), power);
+
+function generatePlayer(position, targetOverall, cls, isStar) {
+  const archetype = pickArchetype(position, targetOverall);
+  const attrs = buildAttributes(targetOverall, position, archetype);
+  const overall = overallFrom(attrs, position);
 
   // Overall (35-99) scaled to a 0..1 quality factor, softened.
   const q = clamp((overall - 40) / 55, 0, 1.15);
 
   // Projected per-game production. These act as tendencies for the sim and as
   // the fallback display line before any games are played.
-  const usage = isStar ? 1.25 : 1;
-  const projPpg = round1(clamp(gaussian(4 + q * 15 * arch.score * usage, 2.2), 1, 30));
-  const projApg = round1(clamp(gaussian(0.6 + q * 3.5 * arch.assist, 0.8), 0.1, 10));
-  const projReb = round1(clamp(gaussian(1 + q * 5 * arch.rebound, 1.1), 0.4, 15));
+  // Scoring uses a gentler exponent than assists/rebounds: shot volume already
+  // gets multiplied by archetype usage, star status and minutes downstream, and
+  // stacking a sharp curve on top of all three sent league leaders to 36 ppg.
+  const scoreW =
+    (spike(attrs.inside, overall, 1.35) * 0.45 + spike(attrs.outside, overall, 1.35) * 0.55) *
+    archetype.usage *
+    (isStar ? 1.25 : 1);
+  const assistW = spike(attrs.playmaking, overall, 3.2) * 1.15;
+  const reboundW = spike(attrs.rebounding, overall, 2.8) * 1.1;
+
+  const projPpg = round1(clamp(gaussian(4 + q * 15 * scoreW, 2.2), 1, 30));
+  const projApg = round1(clamp(gaussian(0.6 + q * 3.5 * assistW, 0.8), 0.1, 10));
+  const projReb = round1(clamp(gaussian(1 + q * 5 * reboundW, 1.1), 0.4, 15));
 
   return {
     id: `p${_pid++}`,
     name: makeName(),
     position,
     class: cls,
+    attrs,
+    archetype: archetype.id,
     overall,
     potential: clamp(overall + randInt(0, cls === 'FR' ? 12 : cls === 'SO' ? 8 : 4), 35, 99),
     isStar,
@@ -156,8 +232,12 @@ export function generateRoster(team) {
     generatePlayer(slots[i], ovr, rollClass(p), i === 0)
   );
 
-  const star = players[0]; // ladder is sorted, so index 0 is the best player
-  star.projPpg *= 1.3; // heavier scoring share before normalization
+  // The ladder is sorted, but overall is derived from attributes now, so
+  // rounding and attribute ceilings can reshuffle the very top. Take whoever
+  // actually graded out highest.
+  const star = players.reduce((a, b) => (b.overall > a.overall ? b : a));
+  players.forEach((pl) => (pl.isStar = pl.id === star.id));
+  star.projPpg *= 1.15; // heavier scoring share before normalization
 
   // Normalize projected production so the roster sums to a realistic team line.
   // (Everyone's points must add up to what the team actually scores.)

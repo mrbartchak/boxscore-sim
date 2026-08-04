@@ -43,6 +43,7 @@ export default function RosterView() {
       <PlayerCard
         player={player}
         layout="tile"
+        showAttributes
         stats={seasonAverages(player)}
         isStar={player.id === ts.rotation.starId}
         onToggleStar={() => setStar(player.id)}
@@ -67,7 +68,8 @@ export default function RosterView() {
         </div>
         <p className="roster__hint">
           Drag any player onto another slot to swap them. Starters split the most minutes; bench minutes fall
-          off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost).
+          off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost). Every player has an
+          archetype and six attributes — hover any bar for the full name.
         </p>
       </div>
 

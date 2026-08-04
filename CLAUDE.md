@@ -33,12 +33,15 @@ data/  →  engine/  →  store/  →  components/
 ## File map
 - `data/teams.js` — 17 conferences, 184 teams. Each team: `{id, name, abbr, conference, prestige(0-100), color}`. `prestige` drives roster quality.
 - `data/names.js` — first/last name pools.
+- `data/archetypes.js` — the 6 `ATTRIBUTES`, `POSITION_WEIGHTS` (how each
+  attribute counts toward overall at each position), and the 41-entry
+  `ARCHETYPES` catalog. Facts only; selection/generation live in `players.js`.
 - `data/marchmadness.js` — historical NCAA tournament aggregates (1985–2024):
   seed-by-seed first round win rates, typical spreads, champion/Final Four
   distributions. **Facts, not logic** — the engine never reads it at runtime; it
   is the calibration target the sim constants were tuned against.
 - `engine/random.js` — RNG helpers (`gaussian` (Box-Muller), `shuffle`, `weightedIndex`, `pick`, `clamp`, `round1`).
-- `engine/players.js` — `generateRoster(team)`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
+- `engine/players.js` — `generateRoster(team)`, `overallFrom()`, `archetypeOf()`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
 - `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`.
 - `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
@@ -85,6 +88,36 @@ get skipped.
 drag-and-drop: `"S:PG".."S:C"` and `"B:0".."B:4"`. Minutes are DERIVED, not set:
 starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineup(fromSlot, toSlot)` swaps occupants. `starId` gives a usage boost in the sim.
 
+### Attributes and archetypes
+Every player carries `attrs` — `inside`, `outside`, `playmaking`, `perimeterD`,
+`interiorD`, `rebounding` (each 25–99) — plus an `archetype` id.
+
+**`overall` is DERIVED, never stored independently**: `overallFrom(attrs, position)`
+is the `POSITION_WEIGHTS` dot product, so a center's rebounding is worth ~2x a
+point guard's. Every existing tier/colour threshold keeps working unchanged.
+
+**An archetype is a shape, not a level.** `shape` holds rating-point offsets, and
+`buildAttributes` re-centers afterwards so the derived overall lands *exactly* on
+the number the talent ladder assigned. This is load-bearing — it's why adding 41
+archetypes did not move the season calibration by a point. Verified across every
+archetype × position × talent level: mean error 0.000, worst 0.
+
+Consequences worth knowing:
+- A spike is always paid for elsewhere. A Sniper's shooting costs him defense and
+  rebounding; he is not a better player than a Glue Guy of the same overall.
+- `minOverall` / `maxOverall` gate archetypes to a talent band, so Unicorn and
+  Bucket Getter are things that happen to a roster (~24% of players 84+), and
+  Raw Project never lands on the best player in the country.
+- Box-score tendencies flow from the attributes via `spike()`, not from position.
+  A Floor General leads his team in assists because his playmaking towers over
+  the rest of his own game. Scoring uses a gentler exponent (1.35 vs 3.2/2.8)
+  because usage, star status and minutes already multiply it downstream.
+
+Not yet wired into outcomes: `teamStrength` still reads only `overall`, so
+attributes and archetypes are currently flavour + box-score shape. They are the
+foundation for lineup-fit ratings (spacing, rim protection, positional fit),
+which is where they start deciding games.
+
 ### Roster generation (`generateRoster`) — four stages, in order
 1. **Team talent level** — `prestigeToOverall(prestige) + gaussian(0, 3.6)`. The
    noise is the point: it gives blue-bloods down years and mid-majors dream
@@ -126,8 +159,9 @@ flip by construction. Our seeding is strictly merit-ordered, so it can't
 reproduce that. Everything else lands within ~4 points.
 
 ### Player stats
-- `projPpg/projApg/projReb` — internal sim weights, normalized at generation so
-  the roster sums to a realistic team total (~73 pts). NOT displayed directly.
+- `projPpg/projApg/projReb` — internal sim weights derived from `attrs` +
+  archetype `usage`, normalized at generation so the roster sums to a realistic
+  team total (~73 pts). NOT displayed directly.
 - Accumulated `gp/pts/ast/reb/min` → `seasonAverages(p)` (null before any games).
 - `careerGp/careerPpg/...` — generated backstory for returning players; freshmen
   have none → `careerAverages(p)` returns null (shown as dashes).
