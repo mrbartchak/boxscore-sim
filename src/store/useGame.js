@@ -235,6 +235,11 @@ export const useGame = create((set, get) => ({
     get()._runSim((st) => st.currentDate >= targetDate);
   },
 
+  // Roll the calendar day by day with no end date — `_runSim` already halts at
+  // the phase boundary, so this plays out the rest of the regular season and
+  // stops itself at the summary.
+  simulateSeason: () => get()._runSim(() => false),
+
   // Simulate the next round of the current tournament phase (one slate of games).
   simulateRound: () => {
     const phase = get().phase;

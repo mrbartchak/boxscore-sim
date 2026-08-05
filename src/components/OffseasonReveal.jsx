@@ -10,7 +10,9 @@ import RosterView from './RosterView.jsx';
 
 // Pace of the walk down the roster in act one, and of the recruit cards in act
 // two — higher tiers dwell longer so the class builds to its best signing.
-const ROW_DELAY = 620;
+// Act one is deliberately unhurried: each card is a small verdict on a player
+// you coached all season, and it doesn't land if they flick past.
+const ROW_DELAY = 1050;
 const TIER_DELAY = { base: 560, silver: 700, gold: 880, diamond: 1120, rainbow: 1500 };
 
 const REASON_ICON = { GRADUATED: '🎓', PRO: '🏀', TRANSFER: '🧳' };
@@ -201,7 +203,15 @@ function DevelopmentCard({ row, resolved }) {
         )}
       </div>
 
-      <PlayerCard player={player} layout="tile" stats={careerAverages(player)} />
+      <div className="devcard__body">
+        <PlayerCard player={player} layout="tile" stats={careerAverages(player)} />
+        {/* The number the whole screen exists to show, thrown over the card. */}
+        {resolved && !reason && gain !== 0 && (
+          <span className={`devcard__jump is-${state}`}>
+            {gain > 0 ? `+${gain}` : gain}
+          </span>
+        )}
+      </div>
 
       <div className="devcard__foot">
         {!resolved ? (

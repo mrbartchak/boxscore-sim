@@ -21,15 +21,21 @@ export function seedOrder(n) {
   return arr;
 }
 
+// The vertical order the 16 lines of a region are printed in. Same matchups and
+// the same tree as `seedOrder(16)` — consecutive pairs still feed the same
+// second-round game, so only the way the bracket READS changes. This is the
+// order every printed bracket uses, and the one people expect to scan.
+export const REGION_LINE_ORDER = [1, 16, 8, 9, 5, 12, 4, 13, 6, 11, 3, 14, 7, 10, 2, 15];
+
 // Build a single-elim bracket. teamsBySeed[0] is the #1 seed, etc.
 // Later-round games start with null participants and are filled by feeders.
 //
 // `teamsBySeed` may be SHORTER than the bracket, in which case the top seeds
 // draw byes: their first-round game is never created and they are placed
 // straight into round two, exactly as a small conference tournament does it.
-export function buildSingleElim(teamsBySeed, startDate, gapDays, phase) {
+export function buildSingleElim(teamsBySeed, startDate, gapDays, phase, lineOrder) {
   const size = 1 << Math.ceil(Math.log2(Math.max(2, teamsBySeed.length)));
-  const order = seedOrder(size);
+  const order = lineOrder && lineOrder.length === size ? lineOrder : seedOrder(size);
   const numRounds = Math.log2(size);
   const games = [];
   const teamAt = (seed) => teamsBySeed[seed - 1] ?? null;
@@ -247,7 +253,8 @@ export function buildNationalBracket(seededTeamIds, startDate) {
       teamsBySeed,
       startDate,
       2,
-      'NATIONAL'
+      'NATIONAL',
+      REGION_LINE_ORDER
     );
     rGames.forEach((g) => (g.region = r));
     games.push(...rGames);

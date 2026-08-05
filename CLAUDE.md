@@ -142,6 +142,9 @@ the whole league, accumulates box scores into team/player stats, propagates
 tournament winners via `nextGameId`/`nextSlot` feeder links, and runs phase
 transitions (generates the next phase's games when the current one completes).
 
+`simulateSeason()` is the calendar's play button: `_runSim` with no stop
+condition, which runs to the phase boundary and halts itself at the summary.
+
 `simulateRegularSeason()` is the exception to the timer: it loops `_stepDay`
 synchronously to the end of the regular season (~220ms for all 5,475 games) so it
 lands directly on the season-summary gate instead of animating a hundred days.
@@ -266,6 +269,10 @@ reproduce that. Everything else lands within ~4 points.
 - `potential` is the ceiling development walks toward; `lastOverall` is set by
   `developPlayer` so the offseason screen can show the year's ▲/▼.
 - **Reveal shows career averages; Roster shows season averages.**
+- `pollRanks(teamStates)` is the top 25 as `{ teamId: rank }` — teams outside it
+  are unranked and carry no number. Shown beside the user's name in the topbar
+  and beside opponents on the calendar. Before any games it ranks on prestige,
+  which reads as a preseason poll.
 - `overallTier(ovr)`: 99=rainbow, 90-98=diamond, 80-89=gold, 70-79=silver, else base. Drives `PlayerCard` colors and reveal animation drama.
 
 ### National bracket — mirrors the real bracketing principles
@@ -279,6 +286,11 @@ carry `region` (0–3); FF games carry `ffRegions`. The rules it implements:
   is the trap: it puts one-bid-league bullies on the 4 line.
 - **S-curve.** `assignRegions` deals each seed line across regions in alternating
   direction, so the strongest 1 seed draws the weakest 2 and the weakest 16.
+- **Printed line order.** A region reads top to bottom as 1/16, 8/9, 5/12, 4/13,
+  6/11, 3/14, 7/10, 2/15 (`REGION_LINE_ORDER`, passed to `buildSingleElim`).
+  This is display only — consecutive pairs still feed the same second-round
+  game, so the tree, the pods and the Elite Eight halves are identical to
+  `seedOrder(16)`. Verify that if you ever change it.
 - **Conference separation.** `separateConferences` hill-climbs on swaps *within a
   seed line* until no two same-conference teams share a Sweet 16 path. Residual
   ~1% of first-round games, where a big conference makes it unavoidable.

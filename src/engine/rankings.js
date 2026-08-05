@@ -56,6 +56,18 @@ export function rankTeams(teamStates) {
     .map((x, i) => ({ ...x, rank: i + 1 }));
 }
 
+// Poll-style top 25: `{ teamId: rank }` for the ranked teams only. Everyone else
+// is unranked and carries no number, the way a poll actually works.
+export const POLL_SIZE = 25;
+
+export function pollRanks(teamStates) {
+  const out = {};
+  rankTeams(teamStates)
+    .slice(0, POLL_SIZE)
+    .forEach(({ ts, rank }) => (out[ts.teamId] = rank));
+  return out;
+}
+
 export function rankTeamsInConference(teamStates, conference) {
   return rankTeams(teamStates).filter(
     (x) => TEAMS_BY_ID[x.ts.teamId].conference === conference

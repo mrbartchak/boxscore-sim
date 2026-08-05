@@ -74,6 +74,12 @@ export function TeamBadge({ teamId, size = 34, seed }) {
   );
 }
 
+// Poll ranking, shown only for the top 25 — everyone else is simply unranked.
+export function RankChip({ rank, className = '' }) {
+  if (!rank) return null;
+  return <span className={`rankchip ${className}`}>{rank}</span>;
+}
+
 export function TeamName({ teamId, showConf = false }) {
   const team = TEAMS_BY_ID[teamId];
   if (!team) return <span className="muted">TBD</span>;
