@@ -43,8 +43,11 @@ export default function Layout() {
           <div>
             <div className="topbar__name">{team.name}</div>
             <div className="topbar__sub">
-              {team.conference} · {ts.record.w}-{ts.record.l}
-              <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
+              <span className="topbar__record">{ts.record.w}-{ts.record.l}</span>
+              <span className="topbar__conf">
+                {team.conference}
+                <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
+              </span>
             </div>
           </div>
         </div>

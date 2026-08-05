@@ -86,6 +86,15 @@ dismissed by an action of the same name. They render in a fixed priority chain i
 | `showConfChamp` | CONF_TOURNEY → NATIONAL | `Interstitials.ConferenceChampBanner` |
 | `showChampBanner` | NATIONAL → DONE | `App.ChampionBanner` |
 
+`OffseasonReveal` runs three acts of its own inside the `showOffseason` gate:
+**development** (last season's roster laid out as cards from the first frame,
+then resolved one at a time — the rating flips, the card pops in proportion to
+the gain via a `--pop` custom property, a tier crossing borrows the roster
+reveal's animation, and departures fade out under their reason), **recruits**,
+then **roster**, which embeds `RosterView` so the lineup can be set before
+tip-off. Note the specificity trap: the pop animation is a shorthand and must
+exclude `.devcard--tierup`, or it silently cancels the tier animation.
+
 Selection Sunday is the exception: it isn't a store flag but local state in
 `NationalTournamentView`, because it gates a whole phase's screen rather than
 overlaying it. `SelectionSunday` reveals the field, then the region, then the
@@ -132,6 +141,11 @@ lands in March — the old calendar was compressed into February.
 the whole league, accumulates box scores into team/player stats, propagates
 tournament winners via `nextGameId`/`nextSlot` feeder links, and runs phase
 transitions (generates the next phase's games when the current one completes).
+
+`simulateRegularSeason()` is the exception to the timer: it loops `_stepDay`
+synchronously to the end of the regular season (~220ms for all 5,475 games) so it
+lands directly on the season-summary gate instead of animating a hundred days.
+Because it runs inside a click handler, React batches it into one render.
 
 `_runSim(shouldStop)` runs `_stepDay` on a timer. It **always stops at a phase
 boundary** (so the postseason never auto-runs — this is intentional; the user
@@ -271,6 +285,17 @@ carry `region` (0–3); FF games carry `ffRegions`. The rules it implements:
 
 Deliberate omission: the real event is 68 with a First Four play-in. This is the
 64-team bracket the play-in feeds.
+
+## Layout rules that exist for a reason
+- **Bracket columns are fixed-width, not `min-width`.** They used to grow the
+  moment a "TBD" slot became a team name, so the whole bracket shifted under the
+  cursor as rounds were simulated. `.brow__name` truncates instead.
+- **The tournament controls are a sticky dock** (`.tdock`) at the bottom of the
+  bracket, with a "My Game" jump. A 64-team bracket is taller than the window and
+  the two bottom regions sit far below a top-mounted toolbar.
+- **The schedule's day slot has a fixed min-height** (`.daypanel`). It shows a box
+  score, an upcoming matchup, or the next game — but always the same height, so
+  the panels beneath it don't jump as the cursor moves across the calendar.
 
 ## Conventions
 - JSX (not TS). Plain CSS in `src/index.css` with CSS custom properties; the

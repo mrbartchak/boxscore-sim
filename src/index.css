@@ -63,6 +63,7 @@ table { border-collapse: collapse; width: 100%; }
 .btn--danger { background: #3a1620; color: var(--loss); border-color: rgba(251,113,133,0.3); }
 .btn--ghost { background: transparent; color: var(--muted); font-size: 12px; padding: 7px 11px; }
 .btn--ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn--strong { border-color: var(--border-strong); color: var(--text); }
 .btn--lg { padding: 12px 22px; font-size: 15px; }
 .btn--icon { padding: 6px 12px; font-size: 18px; line-height: 1; }
 
@@ -142,9 +143,12 @@ table { border-collapse: collapse; width: 100%; }
   padding: 12px 24px; background: rgba(14,20,36,0.85); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30;
 }
-.topbar__team { display: flex; align-items: center; gap: 12px; min-width: 220px; }
+.topbar__team { display: flex; align-items: center; gap: 12px; min-width: 240px; }
 .topbar__name { font-weight: 800; font-size: 16px; }
-.topbar__sub { color: var(--muted); font-size: 12px; }
+.topbar__sub { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; }
+/* The overall record is the number you check most, so it leads. */
+.topbar__record { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.topbar__conf { min-width: 0; }
 .topbar__conf-rec { color: var(--faint); }
 .topbar__status { text-align: right; min-width: 180px; }
 .topbar__phase { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--team-accent); font-weight: 700; }
@@ -259,6 +263,24 @@ table { border-collapse: collapse; width: 100%; }
 .boxscore__score { font-size: 24px; font-weight: 800; }
 .boxscore__opp { color: var(--muted); font-size: 13px; margin-left: auto; }
 
+/* The day slot holds its height whether or not the selected date has a game, so
+   the panels below it stay put as the cursor moves across the calendar. */
+.sidepanel > .panel:first-child, .daypanel { min-height: 356px; }
+.daypanel { display: flex; flex-direction: column; }
+.daypanel__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+}
+.daypanel__date { font-size: 15px; font-weight: 800; }
+.daypanel__preview { display: flex; flex-direction: column; gap: 12px; margin: auto 0; }
+.daypanel__label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--faint); font-weight: 700; }
+.daypanel__matchup { display: flex; align-items: center; gap: 12px; }
+.daypanel__loc { color: var(--muted); font-size: 13px; font-weight: 700; width: 18px; }
+.daypanel__opp { min-width: 0; }
+.daypanel__oppname { font-weight: 700; font-size: 15px; }
+.daypanel__when { color: var(--muted); font-size: 12px; }
+.daypanel__empty { margin: auto 0; text-align: center; }
+
 /* ================= TABLES ================= */
 .statgrid { font-size: 13px; }
 .statgrid th { text-align: center; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -319,8 +341,11 @@ table { border-collapse: collapse; width: 100%; }
 .seg.on { background: var(--team); color: var(--team-text); }
 
 /* Bracket */
+/* Columns are sized for a filled-in bracket from the start. They used to be
+   min-width, so every slot grew the moment "TBD" became a team and the whole
+   bracket shifted under the cursor as rounds were simulated. */
 .bracket { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 8px; }
-.bracket__round { display: flex; flex-direction: column; justify-content: space-around; gap: 12px; min-width: 150px; }
+.bracket__round { display: flex; flex-direction: column; justify-content: space-around; gap: 12px; width: 158px; flex: none; }
 .bracket__roundname { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--faint); font-weight: 700; text-align: center; margin-bottom: 4px; }
 .bracket__roundname--mini { font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
 .matchup { background: var(--bg-2); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
@@ -337,8 +362,11 @@ table { border-collapse: collapse; width: 100%; }
 .brow--user.brow--won { background: color-mix(in srgb, var(--win) 18%, transparent); }
 .brow--user.brow--lost { opacity: 0.7; background: color-mix(in srgb, var(--loss) 14%, transparent); }
 .brow--user .brow__name { font-weight: 800; }
-.brow__seed { width: 16px; color: var(--faint); font-size: 10px; font-weight: 700; }
-.brow__name { flex: 1; font-weight: 600; }
+.brow__seed { width: 16px; flex: none; color: var(--faint); font-size: 10px; font-weight: 700; }
+.brow__name {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .brow__wl { font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 4px; }
 .brow__wl.is-w { color: var(--win); background: rgba(52,211,153,0.16); }
 .brow__wl.is-l { color: var(--loss); background: rgba(251,113,133,0.14); }
@@ -374,6 +402,19 @@ table { border-collapse: collapse; width: 100%; }
 .tstatus__seed { display: flex; align-items: center; gap: 10px; }
 .tstatus__seedline { font-size: 15px; font-weight: 800; }
 .tourney__sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+/* Controls that follow you down a bracket taller than the window. */
+.tdock {
+  position: sticky; bottom: 16px; z-index: 25;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 18px; padding: 10px 14px; width: fit-content; margin-inline: auto;
+  background: rgba(14, 20, 36, 0.94); backdrop-filter: blur(12px);
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+.tdock__find { border-color: var(--team-accent); color: var(--team-accent); }
+.tdock .tctl { gap: 8px; }
+.tdock .tctl__done { padding: 0 8px; }
 
 /* ================= CHAMPION ================= */
 .champ-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(5,8,16,0.8); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; animation: fade 0.4s; }
@@ -535,7 +576,7 @@ table { border-collapse: collapse; width: 100%; }
   background: var(--team); color: var(--team-text);
 }
 .region__cols { display: flex; gap: 10px; }
-.bracket__round--tight { min-width: 76px; gap: 6px; }
+.bracket__round--tight { width: 122px; flex: none; gap: 6px; }
 .matchup--compact .brow { padding: 4px 6px; font-size: 11px; gap: 4px; }
 .matchup--big .brow { padding: 11px; font-size: 15px; }
 
@@ -623,43 +664,54 @@ table { border-collapse: collapse; width: 100%; }
 .offseason__rosternote { color: var(--muted); font-size: 13px; text-align: center; margin: 6px 0 18px; max-width: 640px; }
 .offseason__rosterwrap { width: 100%; }
 
-/* The walk down last year's roster. */
-.devlist { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 6px; }
-.devrow {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-left: 3px solid var(--faint); border-radius: 10px; padding: 10px 14px;
-  opacity: 0; animation: devIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;
+/* Last season's roster, resolving one card at a time. */
+.offseason__grid--dev { row-gap: 18px; }
+.devcard { transition: opacity 0.5s ease, filter 0.5s ease; }
+.devcard--pending { opacity: 0.5; filter: saturate(0.5); }
+/* A resolved card jumps by however much the player did — `--pop` carries the
+   size of the gain, so a +1 is a nudge and a +7 is unmissable. Cards that
+   crossed a tier are excluded: they get the louder animation below instead, and
+   this shorthand would otherwise win on specificity and cancel it. */
+.devcard.is-resolved:not(.devcard--out):not(.devcard--tierup) {
+  animation: devPop 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.4);
 }
-@keyframes devIn {
-  from { opacity: 0; transform: translateX(-14px); }
-  to { opacity: 1; transform: none; }
+@keyframes devPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(var(--pop, 1.05)); }
+  70% { transform: scale(0.985); }
+  100% { transform: scale(1); }
 }
-.devrow--up { border-left-color: var(--win); }
-.devrow--down { border-left-color: var(--loss); }
-.devrow--out { border-left-color: var(--gold); opacity: 0.85; }
-.devrow__pos {
-  min-width: 32px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
-  padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,0.07); color: var(--muted);
+/* A tier crossing borrows the card-reveal animation from the roster reveal, so
+   silver → gold feels the same here as it does on reveal night. The name comes
+   from the `reveal-anim--*` class alongside this one. */
+.devcard--tierup { animation-duration: 0.85s; animation-fill-mode: forwards; }
+.devcard--out { opacity: 0.42; filter: grayscale(0.55); }
+.devcard--out:hover { opacity: 0.8; filter: none; }
+
+.devcard__tag {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 3px 6px; margin-bottom: 5px; border-radius: 6px;
+  background: var(--surface-2); color: var(--muted); min-height: 20px;
 }
-.devrow__name { font-weight: 700; font-size: 14px; flex: 1; min-width: 0; }
-.devrow__class { font-size: 11px; color: var(--faint); white-space: nowrap; }
-.devrow__arrow { color: var(--muted); }
-.devrow__ovr { display: flex; align-items: center; gap: 8px; font-weight: 800; }
-.devrow__from { color: var(--faint); text-decoration: line-through; font-size: 13px; }
-.devrow__to { font-size: 18px; }
-.devrow__delta { font-size: 12px; min-width: 38px; text-align: right; }
-.devrow__delta.is-up { color: var(--win); }
-.devrow__delta.is-down { color: var(--loss); }
-.devrow__delta.is-flat { color: var(--faint); }
-.devrow__reason {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;
+.devcard__tag--graduated { color: var(--gold); background: rgba(245,196,81,0.14); }
+.devcard__tag--pro { color: #7fcbe8; background: rgba(127,203,232,0.16); }
+.devcard__tag--transfer { color: var(--loss); background: rgba(251,113,133,0.14); }
+
+.devcard__foot {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 6px; min-height: 20px; font-size: 12px; font-weight: 800;
 }
-.devrow__reason--graduated { color: var(--gold); }
-.devrow__reason--pro { color: #7fcbe8; }
-.devrow__reason--transfer { color: var(--loss); }
-.devrow__final { color: var(--faint); font-weight: 700; letter-spacing: 0; text-transform: none; }
+.devcard__waiting, .devcard__gone { color: var(--faint); font-weight: 700; }
+.devcard__from { color: var(--faint); text-decoration: line-through; }
+.devcard__arrow { color: var(--muted); font-weight: 400; }
+.devcard__delta.is-up { color: var(--win); }
+.devcard__delta.is-down { color: var(--loss); }
+.devcard__delta.is-flat { color: var(--faint); font-weight: 700; }
+.devcard__tierup {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 2px 6px; border-radius: 20px; background: var(--gold); color: #2a2205;
+}
 
 .offseason__grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; width: 100%; }
 .offseason__leaving { opacity: 0; animation: leaving 0.65s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }

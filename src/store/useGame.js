@@ -249,6 +249,16 @@ export const useGame = create((set, get) => ({
     get()._runSim((st) => st.phase !== phase);
   },
 
+  // Burn through the rest of the regular season at once — no day-by-day timer,
+  // no pauses on your games. Runs synchronously so it lands directly on the
+  // end-of-season summary rather than animating a hundred days at you.
+  simulateRegularSeason: () => {
+    if (get().phase !== 'REGULAR') return;
+    set({ simulating: false });
+    let guard = 0;
+    while (get().phase === 'REGULAR' && guard++ < 400) get()._stepDay();
+  },
+
   stopSim: () => set({ simulating: false, simTarget: null }),
 
   _stepDay: () =>

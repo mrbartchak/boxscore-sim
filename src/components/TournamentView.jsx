@@ -29,6 +29,35 @@ function TourneyControls({ complete }) {
   );
 }
 
+// A 64-team bracket is taller than the window, and the two bottom regions sit
+// well below the controls at the top — so the controls come along, docked to the
+// bottom of the viewport, with a jump straight to whichever game is yours.
+function TourneyDock({ complete, myGameId }) {
+  const jump = () => {
+    const el = myGameId && document.getElementById(`bg-${myGameId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  return (
+    <div className="tdock">
+      {myGameId && (
+        <button className="btn tdock__find" onClick={jump} title="Scroll to your matchup">
+          ◎ My Game
+        </button>
+      )}
+      <TourneyControls complete={complete} />
+    </div>
+  );
+}
+
+// The user's live game: the one still to be played, or the last one they played.
+function userGameId(games, userTeamId) {
+  const mine = games
+    .filter((g) => g.homeId === userTeamId || g.awayId === userTeamId)
+    .sort((a, b) => a.round - b.round);
+  if (!mine.length) return null;
+  return (mine.find((g) => !g.played) ?? mine[mine.length - 1]).id;
+}
+
 // Where the user stands in a bracket, from their own games. Returns the line
 // the status bar prints plus a state class — the thing that was hardest to see.
 function userStatus(games, userTeamId, roundNames) {
@@ -130,6 +159,8 @@ export function ConferenceTournamentView() {
           </div>
         ))}
       </div>
+
+      <TourneyDock complete={complete} myGameId={userGameId(confGames, userTeamId)} />
     </div>
   );
 }
@@ -186,6 +217,8 @@ export function NationalTournamentView() {
       )}
 
       <NationalBracket games={nationalGames} userTeamId={userTeamId} userRegion={userRegion} />
+
+      <TourneyDock complete={phase === 'DONE'} myGameId={userGameId(nationalGames, userTeamId)} />
     </div>
   );
 }
@@ -279,6 +312,7 @@ export function Matchup({ game, userTeamId, compact, big }) {
 
   return (
     <div
+      id={`bg-${game.id}`}
       className={[
         'matchup',
         compact && 'matchup--compact',

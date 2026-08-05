@@ -107,36 +107,44 @@ export default function OffseasonReveal() {
 }
 
 // ---------- Act one: what a year did to the team you had ----------
+//
+// The whole roster is on screen from the first frame, exactly as it finished the
+// season. Then it resolves one player at a time, top of the depth chart down:
+// the rating flips, the card jumps in proportion to the jump it just made, and
+// anyone leaving fades out under the reason they're gone.
 function DevelopmentAct({ report, onDone }) {
-  const [shown, setShown] = useState(0);
+  const [step, setStep] = useState(0);
   const sounded = useRef(0);
 
   useEffect(() => {
-    if (shown >= report.length) return;
-    const t = setTimeout(() => setShown((n) => n + 1), ROW_DELAY);
+    if (step >= report.length) return;
+    const t = setTimeout(() => setStep((n) => n + 1), ROW_DELAY);
     return () => clearTimeout(t);
-  }, [shown, report.length]);
+  }, [step, report.length]);
 
-  // A real jump is worth hearing about.
+  // Crossing into a new tier is the moment worth hearing; a big jump inside one
+  // gets a smaller cue, and everything else passes quietly.
   useEffect(() => {
-    if (shown === 0 || shown <= sounded.current) return;
-    sounded.current = shown;
-    const row = report[shown - 1];
-    if (!row || !row.after) return;
+    if (step === 0 || step <= sounded.current) return;
+    sounded.current = step;
+    const row = report[step - 1];
+    if (!row?.after) return;
     const gain = row.after.overall - row.before.overall;
-    if (gain >= 5) playRevealSfx('gold');
-    else if (gain >= 3) playRevealSfx('silver');
-  }, [shown, report]);
+    const tierBefore = overallTier(row.before.overall);
+    const tierAfter = overallTier(row.after.overall);
+    if (gain > 0 && tierAfter !== tierBefore) playRevealSfx(tierAfter);
+    else if (gain >= 4) playRevealSfx('silver');
+  }, [step, report]);
 
-  const done = shown >= report.length;
+  const done = step >= report.length;
   const left = report.filter((r) => r.reason).length;
 
   return (
     <>
-      <div className="reveal__rostertitle">A Year Later</div>
-      <div className="devlist">
-        {report.slice(0, shown).map((row) => (
-          <DevelopmentRow key={row.before.id} row={row} />
+      <div className="reveal__rostertitle">Last Season's Roster · A Year Later</div>
+      <div className="offseason__grid offseason__grid--dev">
+        {report.map((row, i) => (
+          <DevelopmentCard key={row.before.id} row={row} resolved={i < step} />
         ))}
       </div>
       <div className="reveal__careernote">
@@ -144,7 +152,7 @@ function DevelopmentAct({ report, onDone }) {
       </div>
       <div className="offseason__actions">
         {!done && (
-          <button className="btn" onClick={() => setShown(report.length)}>Skip ahead</button>
+          <button className="btn" onClick={() => setStep(report.length)}>Skip ahead</button>
         )}
         <button
           className="btn btn--primary btn--lg"
@@ -158,34 +166,59 @@ function DevelopmentAct({ report, onDone }) {
   );
 }
 
-function DevelopmentRow({ row }) {
+function DevelopmentCard({ row, resolved }) {
   const { before, after, reason } = row;
   const gain = after ? after.overall - before.overall : 0;
-  const state = reason ? 'out' : gain > 0 ? 'up' : gain < 0 ? 'down' : 'flat';
+  // Show who he was until his turn comes round, then who he became.
+  const player = resolved && after ? after : before;
+
+  const tierBefore = overallTier(before.overall);
+  const tierAfter = after ? overallTier(after.overall) : tierBefore;
+  const tierUp = resolved && gain > 0 && tierAfter !== tierBefore;
+
+  const state = !resolved ? 'pending' : reason ? 'out' : gain > 0 ? 'up' : gain < 0 ? 'down' : 'flat';
+  // Bigger jumps pop harder; a tier crossing gets the full card animation.
+  const pop = 1 + Math.min(Math.abs(gain), 8) * 0.035;
 
   return (
-    <div className={`devrow devrow--${state}`}>
-      <span className="devrow__pos">{before.position}</span>
-      <span className="devrow__name">{before.name}</span>
-      <span className="devrow__class">
-        {CLASS_LABEL[before.class]}
-        {after && <span className="devrow__arrow"> → {CLASS_LABEL[after.class]}</span>}
-      </span>
+    <div
+      className={[
+        'devcard',
+        `devcard--${state}`,
+        resolved && 'is-resolved',
+        tierUp && 'devcard--tierup',
+        tierUp && `reveal-anim--${tierAfter}`,
+      ].filter(Boolean).join(' ')}
+      style={{ '--pop': pop }}
+    >
+      <div className={`devcard__tag ${reason ? `devcard__tag--${reason.toLowerCase()}` : ''}`}>
+        {resolved && reason ? (
+          <>
+            <span aria-hidden="true">{REASON_ICON[reason]}</span> {DEPARTURE_LABEL[reason]}
+          </>
+        ) : (
+          CLASS_LABEL[player.class]
+        )}
+      </div>
 
-      {reason ? (
-        <span className={`devrow__reason devrow__reason--${reason.toLowerCase()}`}>
-          <span aria-hidden="true">{REASON_ICON[reason]}</span> {DEPARTURE_LABEL[reason]}
-          <span className="devrow__final">{before.overall} OVR</span>
-        </span>
-      ) : (
-        <span className="devrow__ovr">
-          <span className="devrow__from">{before.overall}</span>
-          <span className="devrow__to">{after.overall}</span>
-          <span className={`devrow__delta is-${state}`}>
-            {gain > 0 ? `▲ ${gain}` : gain < 0 ? `▼ ${-gain}` : '—'}
-          </span>
-        </span>
-      )}
+      <PlayerCard player={player} layout="tile" stats={careerAverages(player)} />
+
+      <div className="devcard__foot">
+        {!resolved ? (
+          <span className="devcard__waiting">{before.overall} OVR</span>
+        ) : reason ? (
+          <span className="devcard__gone">Left at {before.overall} OVR</span>
+        ) : (
+          <>
+            <span className="devcard__from">{before.overall}</span>
+            <span className="devcard__arrow">→</span>
+            <span className={`devcard__delta is-${state}`}>
+              {gain > 0 ? `▲ ${gain}` : gain < 0 ? `▼ ${-gain}` : 'no change'}
+            </span>
+            {tierUp && <span className="devcard__tierup">{tierAfter}!</span>}
+          </>
+        )}
+      </div>
     </div>
   );
 }

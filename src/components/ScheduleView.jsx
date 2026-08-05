@@ -20,6 +20,7 @@ export default function ScheduleView() {
   const simulating = useGame((s) => s.simulating);
   const phase = useGame((s) => s.phase);
   const simulateTo = useGame((s) => s.simulateTo);
+  const simulateRegularSeason = useGame((s) => s.simulateRegularSeason);
   const stopSim = useGame((s) => s.stopSim);
 
   const [visible, setVisible] = useState(monthOf(currentDate));
@@ -65,7 +66,7 @@ export default function ScheduleView() {
           onStop={stopSim}
           onSimWeek={() => simulateTo(addDays(currentDate, 7))}
           onSimNext={() => nextGame && simulateTo(nextGame.date)}
-          onSimEnd={() => simulateTo('2026-12-31')}
+          onSimSeason={simulateRegularSeason}
           hasNext={!!nextGame}
           selectedDate={selectedDate}
           phase={phase}
@@ -95,7 +96,7 @@ export default function ScheduleView() {
   );
 }
 
-function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSimWeek, onSimNext, onSimEnd, hasNext, selectedDate, phase }) {
+function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSimWeek, onSimNext, onSimSeason, hasNext, selectedDate }) {
   const step = (delta) => {
     let m = visible.month + delta;
     let y = visible.year;
@@ -117,9 +118,12 @@ function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSim
           <>
             <button className="btn" onClick={onSimWeek}>+1 Week</button>
             <button className="btn" onClick={onSimNext} disabled={!hasNext}>Next Game</button>
-            <button className="btn" onClick={onSimEnd}>Sim to End</button>
             <button className="btn btn--primary" onClick={onSim} disabled={!hasNext && !selectedDate}>
               ▶ {selectedDate ? `Sim to ${formatDate(selectedDate)}` : 'Simulate'}
+            </button>
+            {/* Skips the day-by-day entirely and lands on the season summary. */}
+            <button className="btn btn--ghost btn--strong" onClick={onSimSeason} title="Play out every remaining game at once">
+              ⏩ Sim Regular Season
             </button>
           </>
         )}
@@ -216,9 +220,15 @@ function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, current
 
   return (
     <aside className="sidepanel">
-      {detailGame && detailGame.played && (
-        <BoxScore game={detailGame} userTeamId={userTeamId} />
-      )}
+      {/* This slot keeps its height whatever the selected day holds, so the
+          panels underneath don't jump every time the cursor moves off a game. */}
+      <DayPanel
+        game={detailGame}
+        date={detailDate}
+        userTeamId={userTeamId}
+        nextGame={upcoming[0]}
+        currentDate={currentDate}
+      />
 
       <section className="panel">
         <h3 className="panel__title">Upcoming</h3>
@@ -259,6 +269,48 @@ function GameRow({ game, userTeamId }) {
         </span>
       )}
     </div>
+  );
+}
+
+// The day slot: a box score if the selected day has a finished game, a preview
+// if it has one coming, and the next game up if it has neither.
+function DayPanel({ game, date, userTeamId, nextGame, currentDate }) {
+  if (game && game.played) return <BoxScore game={game} userTeamId={userTeamId} />;
+
+  const upcoming = game || nextGame;
+  const isHome = upcoming && upcoming.homeId === userTeamId;
+  const oppId = upcoming && (isHome ? upcoming.awayId : upcoming.homeId);
+  const opp = oppId ? TEAMS_BY_ID[oppId] : null;
+
+  return (
+    <section className="panel daypanel">
+      <div className="daypanel__head">
+        <span className="daypanel__date">{formatDate(date)}</span>
+        <span className="muted small">
+          {game ? 'Scheduled' : date > currentDate ? 'No game' : 'No game played'}
+        </span>
+      </div>
+
+      {upcoming ? (
+        <div className="daypanel__preview">
+          <div className="daypanel__label">{game ? 'On this date' : 'Next up'}</div>
+          <div className="daypanel__matchup">
+            <span className="daypanel__loc">{upcoming.neutral ? 'vs' : isHome ? 'vs' : '@'}</span>
+            <TeamBadge teamId={oppId} size={40} />
+            <div className="daypanel__opp">
+              <div className="daypanel__oppname">{opp?.name}</div>
+              <div className="muted small">{opp?.conference}</div>
+            </div>
+          </div>
+          <div className="daypanel__when">
+            {formatDate(upcoming.date)} ·{' '}
+            {upcoming.phase !== 'REGULAR' ? 'Tournament' : upcoming.conference ? 'Conference game' : 'Non-conference'}
+          </div>
+        </div>
+      ) : (
+        <p className="muted daypanel__empty">Nothing left on the schedule.</p>
+      )}
+    </section>
   );
 }
 
