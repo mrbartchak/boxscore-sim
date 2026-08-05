@@ -5,6 +5,7 @@ import { conferenceStandings } from '../engine/rankings.js';
 import { NATIONAL_ROUND_NAMES, CONF_ROUND_NAMES, REGIONS } from '../engine/tournament.js';
 import { TeamBadge } from './common.jsx';
 import { ORD } from './Interstitials.jsx';
+import SelectionSunday from './SelectionSunday.jsx';
 
 // ---------- Simulation controls shared by both tournament screens ----------
 function TourneyControls({ complete }) {
@@ -26,6 +27,35 @@ function TourneyControls({ complete }) {
       )}
     </div>
   );
+}
+
+// A 64-team bracket is taller than the window, and the two bottom regions sit
+// well below the controls at the top — so the controls come along, docked to the
+// bottom of the viewport, with a jump straight to whichever game is yours.
+function TourneyDock({ complete, myGameId }) {
+  const jump = () => {
+    const el = myGameId && document.getElementById(`bg-${myGameId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  return (
+    <div className="tdock">
+      {myGameId && (
+        <button className="btn tdock__find" onClick={jump} title="Scroll to your matchup">
+          ◎ My Game
+        </button>
+      )}
+      <TourneyControls complete={complete} />
+    </div>
+  );
+}
+
+// The user's live game: the one still to be played, or the last one they played.
+function userGameId(games, userTeamId) {
+  const mine = games
+    .filter((g) => g.homeId === userTeamId || g.awayId === userTeamId)
+    .sort((a, b) => a.round - b.round);
+  if (!mine.length) return null;
+  return (mine.find((g) => !g.played) ?? mine[mine.length - 1]).id;
 }
 
 // Where the user stands in a bracket, from their own games. Returns the line
@@ -129,6 +159,8 @@ export function ConferenceTournamentView() {
           </div>
         ))}
       </div>
+
+      <TourneyDock complete={complete} myGameId={userGameId(confGames, userTeamId)} />
     </div>
   );
 }
@@ -145,7 +177,6 @@ export function NationalTournamentView() {
   const [entered, setEntered] = useState(started);
 
   const madeIt = nationalField.includes(userTeamId);
-  const overallSeed = madeIt ? nationalField.indexOf(userTeamId) + 1 : null;
   const firstGame = nationalGames.find(
     (g) => g.round === 0 && (g.homeId === userTeamId || g.awayId === userTeamId)
   );
@@ -155,37 +186,7 @@ export function NationalTournamentView() {
     ? (firstGame.homeId === userTeamId ? firstGame.seedHome : firstGame.seedAway)
     : null;
 
-  if (!entered && !started) {
-    return (
-      <div className="selection">
-        <div className="selection__card">
-          <div className="selection__logo">🏀</div>
-          <h2>Selection Sunday</h2>
-          {madeIt ? (
-            <>
-              <p className="selection__in">You're in the Big Dance!</p>
-              <div className="selection__seedrow">
-                <TeamBadge teamId={userTeamId} size={56} seed={regionSeed} />
-                <div>
-                  <div className="selection__seed">No. {regionSeed} seed</div>
-                  <div className="selection__region">{region} Region · Overall #{overallSeed}</div>
-                </div>
-              </div>
-              <button className="btn btn--primary btn--lg" onClick={() => setEntered(true)}>
-                Enter Tournament →
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="selection__out">Your team missed the 64-team field this year.</p>
-              <p className="muted">Tough break — there's always next season. You can still watch it play out.</p>
-              <button className="btn btn--lg" onClick={() => setEntered(true)}>Watch the Tournament →</button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
+  if (!entered && !started) return <SelectionSunday onEnter={() => setEntered(true)} />;
 
   const status = madeIt ? userStatus(nationalGames, userTeamId, NATIONAL_ROUND_NAMES) : null;
 
@@ -216,6 +217,8 @@ export function NationalTournamentView() {
       )}
 
       <NationalBracket games={nationalGames} userTeamId={userTeamId} userRegion={userRegion} />
+
+      <TourneyDock complete={phase === 'DONE'} myGameId={userGameId(nationalGames, userTeamId)} />
     </div>
   );
 }
@@ -309,6 +312,7 @@ export function Matchup({ game, userTeamId, compact, big }) {
 
   return (
     <div
+      id={`bg-${game.id}`}
       className={[
         'matchup',
         compact && 'matchup--compact',

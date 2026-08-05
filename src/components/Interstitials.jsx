@@ -3,10 +3,10 @@
 // moments where the game stops and tells you how you did.
 
 import { useGame } from '../store/useGame.js';
-import { TEAMS_BY_ID } from '../data/teams.js';
+import { TEAMS, TEAMS_BY_ID } from '../data/teams.js';
 import { rankTeams, conferenceStandings } from '../engine/rankings.js';
 import { seasonAverages } from '../engine/players.js';
-import { TeamBadge, contrastColor } from './common.jsx';
+import { TeamBadge, contrastColor, accentColor } from './common.jsx';
 
 export const ORD = (n) => {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -44,7 +44,7 @@ export function SeasonSummary() {
   const seed = confFinish <= 8 ? confFinish : null;
 
   return (
-    <div className="gate" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
+    <div className="gate" style={{ '--team': team.color, '--team-accent': accentColor(team.color), '--team-text': contrastColor(team.color) }}>
       <div className="gate__card gate__card--wide">
         <div className="gate__eyebrow">Season {seasonNumber} · Regular Season Complete</div>
         <div className="gate__head">
@@ -59,7 +59,7 @@ export function SeasonSummary() {
             label={`${team.conference} Finish`}
             sub={`${ts.confRecord.w}-${ts.confRecord.l} in league`}
           />
-          <GateStat value={`#${natRank}`} label="National Rank" sub="of 184 teams" />
+          <GateStat value={`#${natRank}`} label="National Rank" sub={`of ${TEAMS.length} teams`} />
           <GateStat
             value={`${(ts.pf / games).toFixed(1)}`}
             label="Points For"
@@ -130,7 +130,7 @@ export function ConferenceChampBanner() {
   const team = TEAMS_BY_ID[userTeamId];
 
   return (
-    <div className="gate" style={{ '--team': champ.color, '--team-text': contrastColor(champ.color) }}>
+    <div className="gate" style={{ '--team': champ.color, '--team-accent': accentColor(champ.color), '--team-text': contrastColor(champ.color) }}>
       <div className="gate__card">
         <div className="gate__eyebrow">{conf} Tournament</div>
         <div className="gate__trophy">🏆</div>

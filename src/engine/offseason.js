@@ -200,14 +200,23 @@ export function advanceRoster(teamState, team) {
 
   const departures = [];
   const returning = [];
-  teamState.players.forEach((p) => {
+  // One row per player who finished last season here, best first — the order the
+  // offseason screen walks down when it shows you what became of each of them.
+  const report = [];
+  depth.forEach((p) => {
     let reason = null;
     if (p.class === 'SR') reason = 'GRADUATED';
     else if (rand() < proDeclareChance(p, team.prestige)) reason = 'PRO';
     else if (rand() < transferOutChance(p, rankOf.get(p.id), team.prestige)) reason = 'TRANSFER';
 
-    if (reason) departures.push({ player: p, reason });
-    else returning.push(developPlayer(p));
+    if (reason) {
+      departures.push({ player: p, reason });
+      report.push({ before: p, after: null, reason });
+    } else {
+      const grown = developPlayer(p);
+      returning.push(grown);
+      report.push({ before: p, after: grown, reason: null });
+    }
   });
 
   const incoming = recruitClass(team, departures.map((d) => d.player.position), cycle);
@@ -220,5 +229,5 @@ export function advanceRoster(teamState, team) {
   star.projPpg *= 1.3; // heavier scoring share before normalization
   normalizeProjections(players, team);
 
-  return { players, departures, incoming, cycle };
+  return { players, departures, incoming, report, cycle };
 }

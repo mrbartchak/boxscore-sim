@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
-import { formatDate, addDays } from '../engine/schedule.js';
+import { formatDate } from '../engine/schedule.js';
 import { wearsStar } from '../engine/players.js';
-import { TeamBadge, TeamName } from './common.jsx';
+import { pollRanks } from '../engine/rankings.js';
+import { TeamBadge, TeamName, RankChip, accentColor } from './common.jsx';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -18,9 +19,13 @@ export default function ScheduleView() {
   const games = useGame((s) => s.games);
   const currentDate = useGame((s) => s.currentDate);
   const simulating = useGame((s) => s.simulating);
-  const phase = useGame((s) => s.phase);
   const simulateTo = useGame((s) => s.simulateTo);
+  const simulateSeason = useGame((s) => s.simulateSeason);
+  const simulateRegularSeason = useGame((s) => s.simulateRegularSeason);
   const stopSim = useGame((s) => s.stopSim);
+  const teamStates = useGame((s) => s.teamStates);
+
+  const ranks = useMemo(() => pollRanks(teamStates), [teamStates]);
 
   const [visible, setVisible] = useState(monthOf(currentDate));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -48,9 +53,10 @@ export default function ScheduleView() {
 
   const nextGame = userGames.find((g) => !g.played && g.date > currentDate);
 
+  // Play runs to the end of the season unless a specific date is picked.
   const handleSim = () => {
-    const target = selectedDate && selectedDate > currentDate ? selectedDate : nextGame?.date;
-    if (target) simulateTo(addDays(target, 0));
+    if (selectedDate && selectedDate > currentDate) simulateTo(selectedDate);
+    else simulateSeason();
     setSelectedDate(null);
   };
 
@@ -63,18 +69,17 @@ export default function ScheduleView() {
           simulating={simulating}
           onSim={handleSim}
           onStop={stopSim}
-          onSimWeek={() => simulateTo(addDays(currentDate, 7))}
           onSimNext={() => nextGame && simulateTo(nextGame.date)}
-          onSimEnd={() => simulateTo('2026-12-31')}
+          onFinishSeason={simulateRegularSeason}
           hasNext={!!nextGame}
           selectedDate={selectedDate}
-          phase={phase}
         />
         <Calendar
           visible={visible}
           currentDate={currentDate}
           userTeamId={userTeamId}
           userGamesByDate={userGamesByDate}
+          ranks={ranks}
           selectedDate={selectedDate}
           detailDate={detailDate}
           onSelect={(date, hasFutureGame) => {
@@ -95,7 +100,7 @@ export default function ScheduleView() {
   );
 }
 
-function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSimWeek, onSimNext, onSimEnd, hasNext, selectedDate, phase }) {
+function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSimNext, onFinishSeason, hasNext, selectedDate }) {
   const step = (delta) => {
     let m = visible.month + delta;
     let y = visible.year;
@@ -111,14 +116,19 @@ function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSim
         <button className="btn btn--icon" onClick={() => step(1)}>›</button>
       </div>
       <div className="cal-toolbar__actions">
+        {/* Play runs the calendar to the end of the season; while it's running
+            you can stop, or skip the rest of the way in one jump. */}
         {simulating ? (
-          <button className="btn btn--danger" onClick={onStop}>■ Stop</button>
+          <>
+            <button className="btn btn--danger" onClick={onStop}>■ Stop</button>
+            <button className="btn btn--strong" onClick={onFinishSeason} title="Jump to the end of the regular season">
+              ⏩ Complete Regular Season
+            </button>
+          </>
         ) : (
           <>
-            <button className="btn" onClick={onSimWeek}>+1 Week</button>
             <button className="btn" onClick={onSimNext} disabled={!hasNext}>Next Game</button>
-            <button className="btn" onClick={onSimEnd}>Sim to End</button>
-            <button className="btn btn--primary" onClick={onSim} disabled={!hasNext && !selectedDate}>
+            <button className="btn btn--primary" onClick={onSim}>
               ▶ {selectedDate ? `Sim to ${formatDate(selectedDate)}` : 'Simulate'}
             </button>
           </>
@@ -128,7 +138,7 @@ function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSim
   );
 }
 
-function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedDate, detailDate, onSelect }) {
+function Calendar({ visible, currentDate, userTeamId, userGamesByDate, ranks, selectedDate, detailDate, onSelect }) {
   const { year, month } = visible;
   const first = new Date(year, month, 1);
   const startDow = first.getDay();
@@ -162,7 +172,7 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
           return (
             <button
               key={i}
-              style={opp ? { '--opp': opp.color } : undefined}
+              style={opp ? { '--opp': opp.color, '--opp-ink': accentColor(opp.color) } : undefined}
               className={[
                 'cal-cell',
                 isCurrent && 'is-current',
@@ -175,7 +185,7 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
               onClick={() => onSelect(iso, !!g && !g.played)}
             >
               <span className="cal-cell__day">{day}</span>
-              {g && <GameChip game={g} userTeamId={userTeamId} opp={opp} />}
+              {g && <GameChip game={g} userTeamId={userTeamId} opp={opp} rank={ranks[opp?.id]} />}
             </button>
           );
         })}
@@ -184,7 +194,7 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
   );
 }
 
-function GameChip({ game, userTeamId, opp }) {
+function GameChip({ game, userTeamId, opp, rank }) {
   const isHome = game.homeId === userTeamId;
   const prefix = game.neutral ? 'vs' : isHome ? 'vs' : '@';
   const r = game.result;
@@ -195,6 +205,7 @@ function GameChip({ game, userTeamId, opp }) {
       <span className="cal-cell__opp">
         <span className="cal-cell__prefix">{prefix}</span>
         <span className="cal-cell__abbr">{opp ? opp.abbr : 'TBD'}</span>
+        <RankChip rank={rank} className="rankchip--sm" />
       </span>
       {opp && <span className="cal-cell__team">{opp.name}</span>}
       {game.played && (
@@ -216,9 +227,15 @@ function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, current
 
   return (
     <aside className="sidepanel">
-      {detailGame && detailGame.played && (
-        <BoxScore game={detailGame} userTeamId={userTeamId} />
-      )}
+      {/* This slot keeps its height whatever the selected day holds, so the
+          panels underneath don't jump every time the cursor moves off a game. */}
+      <DayPanel
+        game={detailGame}
+        date={detailDate}
+        userTeamId={userTeamId}
+        nextGame={upcoming[0]}
+        currentDate={currentDate}
+      />
 
       <section className="panel">
         <h3 className="panel__title">Upcoming</h3>
@@ -254,9 +271,53 @@ function GameRow({ game, userTeamId }) {
           {won ? 'W' : 'L'} {isHome ? game.result.homePts : game.result.awayPts}-{isHome ? game.result.awayPts : game.result.homePts}
         </span>
       ) : (
-        <span className="pill pill--muted">{game.phase === 'REGULAR' ? '' : 'Tourney'}</span>
+        <span className="pill pill--muted">
+          {game.phase !== 'REGULAR' ? 'Tourney' : game.conference ? 'Conf' : 'Non-conf'}
+        </span>
       )}
     </div>
+  );
+}
+
+// The day slot: a box score if the selected day has a finished game, a preview
+// if it has one coming, and the next game up if it has neither.
+function DayPanel({ game, date, userTeamId, nextGame, currentDate }) {
+  if (game && game.played) return <BoxScore game={game} userTeamId={userTeamId} />;
+
+  const upcoming = game || nextGame;
+  const isHome = upcoming && upcoming.homeId === userTeamId;
+  const oppId = upcoming && (isHome ? upcoming.awayId : upcoming.homeId);
+  const opp = oppId ? TEAMS_BY_ID[oppId] : null;
+
+  return (
+    <section className="panel daypanel">
+      <div className="daypanel__head">
+        <span className="daypanel__date">{formatDate(date)}</span>
+        <span className="muted small">
+          {game ? 'Scheduled' : date > currentDate ? 'No game' : 'No game played'}
+        </span>
+      </div>
+
+      {upcoming ? (
+        <div className="daypanel__preview">
+          <div className="daypanel__label">{game ? 'On this date' : 'Next up'}</div>
+          <div className="daypanel__matchup">
+            <span className="daypanel__loc">{upcoming.neutral ? 'vs' : isHome ? 'vs' : '@'}</span>
+            <TeamBadge teamId={oppId} size={40} />
+            <div className="daypanel__opp">
+              <div className="daypanel__oppname">{opp?.name}</div>
+              <div className="muted small">{opp?.conference}</div>
+            </div>
+          </div>
+          <div className="daypanel__when">
+            {formatDate(upcoming.date)} ·{' '}
+            {upcoming.phase !== 'REGULAR' ? 'Tournament' : upcoming.conference ? 'Conference game' : 'Non-conference'}
+          </div>
+        </div>
+      ) : (
+        <p className="muted daypanel__empty">Nothing left on the schedule.</p>
+      )}
+    </section>
   );
 }
 

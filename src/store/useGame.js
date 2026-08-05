@@ -1,8 +1,13 @@
 import { create } from 'zustand';
-import { TEAMS, CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
+import { TEAMS, TEAMS_BY_ID } from '../data/teams.js';
 import { generateRoster } from '../engine/players.js';
 import { advanceRoster, rollCycle } from '../engine/offseason.js';
-import { defaultLineup, simulateGame, rollPostseasonForm } from '../engine/simulation.js';
+import {
+  defaultLineup,
+  simulateGame,
+  rollPostseasonForm,
+  teamStrength,
+} from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
 import {
   seedConferenceTournaments,
@@ -28,13 +33,17 @@ function newTeamState(teamId, players, cycle) {
     confRecord: { w: 0, l: 0 },
     pf: 0,
     pa: 0,
+    oppStrengthSum: 0, // sum of opponents' ratings, for strength of schedule
     streak: 0, // + wins, - losses
     form: 0, // postseason peak/slump, rolled when the brackets are drawn
   };
 }
 
 // Apply a game's box score + result to a team state, returning a new state.
-function applyResult(ts, box, teamPts, oppPts, won, isConf) {
+// `oppStrength` accumulates into the strength-of-schedule term the rankings use:
+// now that a third of the season is played outside the conference, a team's SOS
+// has to be measured from who it actually played.
+function applyResult(ts, box, teamPts, oppPts, won, isConf, oppStrength) {
   const boxById = Object.fromEntries(box.map((b) => [b.playerId, b]));
   const players = ts.players.map((p) => {
     const b = boxById[p.id];
@@ -57,6 +66,7 @@ function applyResult(ts, box, teamPts, oppPts, won, isConf) {
       : ts.confRecord,
     pf: ts.pf + teamPts,
     pa: ts.pa + oppPts,
+    oppStrengthSum: ts.oppStrengthSum + oppStrength,
     streak: won ? Math.max(1, ts.streak + 1) : Math.min(-1, ts.streak - 1),
   };
 }
@@ -90,11 +100,7 @@ const BLANK_SEASON = {
 
 // Build the league's schedule + date index for a fresh season.
 function buildSchedule() {
-  const teamIdsByConf = {};
-  CONFERENCES.forEach((c) => (teamIdsByConf[c] = []));
-  TEAMS.forEach((t) => teamIdsByConf[t.conference].push(t.id));
-
-  const { games, lastRegularDate } = buildRegularSeason(teamIdsByConf);
+  const { games, lastRegularDate } = buildRegularSeason(TEAMS);
   const gamesById = {};
   const gameIdsByDate = {};
   games.forEach((g) => {
@@ -150,9 +156,9 @@ export const useGame = create((set, get) => ({
     let offseason = null;
     Object.values(teamStates).forEach((ts) => {
       const team = TEAMS_BY_ID[ts.teamId];
-      const { players, departures, incoming, cycle } = advanceRoster(ts, team);
+      const { players, departures, incoming, report, cycle } = advanceRoster(ts, team);
       nextStates[ts.teamId] = newTeamState(ts.teamId, players, cycle);
-      if (ts.teamId === userTeamId) offseason = { departures, incoming };
+      if (ts.teamId === userTeamId) offseason = { departures, incoming, report };
     });
 
     set({
@@ -166,6 +172,16 @@ export const useGame = create((set, get) => ({
       offseason,
       version: get().version + 1,
     });
+  },
+
+  // For a team that missed the field: play the tournament out in one go (the
+  // league still needs a champion and a completed season to age from) and land
+  // straight in the offseason.
+  skipToOffseason: () => {
+    set({ simulating: false });
+    let guard = 0;
+    while (get().phase !== 'DONE' && guard++ < 400) get()._stepDay();
+    get().newSeason();
   },
 
   // Drop the current save entirely and go back to team selection.
@@ -219,6 +235,11 @@ export const useGame = create((set, get) => ({
     get()._runSim((st) => st.currentDate >= targetDate);
   },
 
+  // Roll the calendar day by day with no end date — `_runSim` already halts at
+  // the phase boundary, so this plays out the rest of the regular season and
+  // stops itself at the summary.
+  simulateSeason: () => get()._runSim(() => false),
+
   // Simulate the next round of the current tournament phase (one slate of games).
   simulateRound: () => {
     const phase = get().phase;
@@ -231,6 +252,16 @@ export const useGame = create((set, get) => ({
   simulateTournament: () => {
     const phase = get().phase;
     get()._runSim((st) => st.phase !== phase);
+  },
+
+  // Burn through the rest of the regular season at once — no day-by-day timer,
+  // no pauses on your games. Runs synchronously so it lands directly on the
+  // end-of-season summary rather than animating a hundred days at you.
+  simulateRegularSeason: () => {
+    if (get().phase !== 'REGULAR') return;
+    set({ simulating: false });
+    let guard = 0;
+    while (get().phase === 'REGULAR' && guard++ < 400) get()._stepDay();
   },
 
   stopSim: () => set({ simulating: false, simTarget: null }),
@@ -255,13 +286,18 @@ export const useGame = create((set, get) => ({
         });
 
         const homeWon = result.winnerId === g.homeId;
-        const isConf = g.phase === 'REGULAR' || g.phase === 'CONF_TOURNEY';
+        // Only league games count toward the conference record — a REGULAR game
+        // is now either conference or not, and `conference` is what says which.
+        const isConf =
+          (g.phase === 'REGULAR' && g.conference != null) || g.phase === 'CONF_TOURNEY';
+        const homeStrength = teamStrength(home);
+        const awayStrength = teamStrength(away);
 
         teamStates[g.homeId] = applyResult(
-          home, result.homeBox, result.homePts, result.awayPts, homeWon, isConf
+          home, result.homeBox, result.homePts, result.awayPts, homeWon, isConf, awayStrength
         );
         teamStates[g.awayId] = applyResult(
-          away, result.awayBox, result.awayPts, result.homePts, !homeWon, isConf
+          away, result.awayBox, result.awayPts, result.homePts, !homeWon, isConf, homeStrength
         );
 
         games[id] = { ...g, played: true, result };

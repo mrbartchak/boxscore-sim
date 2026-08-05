@@ -4,35 +4,35 @@ import { TEAMS_BY_ID, CONFERENCES } from '../data/teams.js';
 import { seasonAverages } from './players.js';
 import { teamStrength, MARGIN_PER_RATING } from './simulation.js';
 
-// Average roster strength of each conference, and the league average. The
-// regular season is played ENTIRELY inside the conference, so a team's schedule
-// strength simply *is* its league's strength — there is nothing else to measure.
+// League-wide averages used to place a team's schedule relative to the field.
 export function ratingContext(teamStates) {
   const all = Object.values(teamStates);
-  const strengthById = {};
-  all.forEach((ts) => (strengthById[ts.teamId] = teamStrength(ts)));
+  const leagueAvg = all.reduce((a, ts) => a + teamStrength(ts), 0) / (all.length || 1);
 
   const byConf = {};
   CONFERENCES.forEach((c) => (byConf[c] = []));
-  all.forEach((ts) => byConf[TEAMS_BY_ID[ts.teamId].conference].push(strengthById[ts.teamId]));
-
+  all.forEach((ts) => byConf[TEAMS_BY_ID[ts.teamId].conference].push(teamStrength(ts)));
   const confStrength = {};
   Object.entries(byConf).forEach(([c, xs]) => {
     confStrength[c] = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
   });
-  const leagueAvg =
-    all.reduce((a, ts) => a + strengthById[ts.teamId], 0) / (all.length || 1);
 
-  return { confStrength, leagueAvg };
+  return { leagueAvg, confStrength };
 }
 
 // Selection-committee-style resume rating, built on OPPONENT-ADJUSTED scoring
 // margin the way the real NET is. Raw margin is the trap: a dominant team in a
 // one-bid league piles up +20s against nobody, and rating that at face value
 // puts them on the 4 line and eventually in a Final Four, which has never
-// happened. Since the regular season is played entirely inside the conference,
-// the adjustment is exact — a league that rates X points weak inflates every
-// margin inside it by X * MARGIN_PER_RATING points.
+// happened.
+//
+// The adjustment is measured from the schedule a team ACTUALLY played —
+// `oppStrengthSum` accumulates every opponent's rating as the games are simmed.
+// That is what the 12 non-conference games buy: before them a team never left
+// its own league, so its schedule strength was just its conference's strength
+// and two leagues could only be compared through their reputations. Now the
+// leagues are genuinely connected, and a weak conference's champion is measured
+// against the good teams it lost to in December.
 export function powerRating(ts, ctx) {
   const games = ts.record.w + ts.record.l;
   if (!games) {
@@ -41,8 +41,8 @@ export function powerRating(ts, ctx) {
   }
   const winPct = ts.record.w / games;
   const margin = (ts.pf - ts.pa) / games;
-  const conf = TEAMS_BY_ID[ts.teamId].conference;
-  const sos = ctx ? ctx.confStrength[conf] - ctx.leagueAvg : 0;
+  const oppAvg = ts.oppStrengthSum / games;
+  const sos = ctx ? oppAvg - ctx.leagueAvg : 0;
   const adjMargin = margin + sos * MARGIN_PER_RATING;
   // Efficiency leads, record still counts — the committee rewards winning.
   return adjMargin * 2 + winPct * 25;
@@ -54,6 +54,18 @@ export function rankTeams(teamStates) {
     .map((ts) => ({ ts, rating: powerRating(ts, ctx) }))
     .sort((a, b) => b.rating - a.rating)
     .map((x, i) => ({ ...x, rank: i + 1 }));
+}
+
+// Poll-style top 25: `{ teamId: rank }` for the ranked teams only. Everyone else
+// is unranked and carries no number, the way a poll actually works.
+export const POLL_SIZE = 25;
+
+export function pollRanks(teamStates) {
+  const out = {};
+  rankTeams(teamStates)
+    .slice(0, POLL_SIZE)
+    .forEach(({ ts, rank }) => (out[ts.teamId] = rank));
+  return out;
 }
 
 export function rankTeamsInConference(teamStates, conference) {

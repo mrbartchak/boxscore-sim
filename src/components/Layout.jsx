@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
-import { TeamBadge, contrastColor } from './common.jsx';
+import { pollRanks } from '../engine/rankings.js';
+import { TeamBadge, RankChip, contrastColor, accentColor } from './common.jsx';
 import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
@@ -28,19 +29,32 @@ export default function Layout() {
   const activeView = useGame((s) => s.activeView);
   const setView = useGame((s) => s.setView);
   const seasonNumber = useGame((s) => s.seasonNumber);
+  const teamStates = useGame((s) => s.teamStates);
 
   const team = TEAMS_BY_ID[userTeamId];
+  // Recomputed only when a day has actually been simulated.
+  const rank = useMemo(() => pollRanks(teamStates)[userTeamId], [teamStates, userTeamId]);
 
   return (
-    <div className="app" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
+    <div className="app" style={{
+        '--team': team.color,
+        '--team-accent': accentColor(team.color),
+        '--team-text': contrastColor(team.color),
+      }}>
       <header className="topbar">
         <div className="topbar__team">
           <TeamBadge teamId={userTeamId} size={40} />
           <div>
-            <div className="topbar__name">{team.name}</div>
+            <div className="topbar__name">
+              {team.name}
+              <RankChip rank={rank} />
+            </div>
             <div className="topbar__sub">
-              {team.conference} · {ts.record.w}-{ts.record.l}
-              <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
+              <span className="topbar__record">{ts.record.w}-{ts.record.l}</span>
+              <span className="topbar__conf">
+                {team.conference}
+                <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
+              </span>
             </div>
           </div>
         </div>

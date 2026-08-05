@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { teamsByConference, TEAMS_BY_ID, TEAMS } from '../data/teams.js';
 import { useGame } from '../store/useGame.js';
-import { TeamBadge, PrestigeMeter, contrastColor } from './common.jsx';
+import { TeamBadge, PrestigeMeter, contrastColor, accentColor } from './common.jsx';
 
 const CONF_GROUPS = teamsByConference();
 
@@ -34,7 +34,7 @@ export default function TeamSelect() {
                   key={t.id}
                   className={`teamcard ${selected === t.id ? 'is-selected' : ''}`}
                   onClick={() => setSelected(t.id)}
-                  style={{ '--team': t.color, '--team-text': contrastColor(t.color) }}
+                  style={{ '--team': t.color, '--team-accent': accentColor(t.color), '--team-text': contrastColor(t.color) }}
                 >
                   <TeamBadge teamId={t.id} size={40} />
                   <div className="teamcard__info">
