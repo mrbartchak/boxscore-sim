@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID, CONFERENCES } from '../data/teams.js';
 import { rankTeams, conferenceStandings, leaderboard } from '../engine/rankings.js';
+import { wearsStar } from '../engine/players.js';
 import { TeamBadge, TeamName } from './common.jsx';
 
 const SUBTABS = [
@@ -119,16 +120,19 @@ function Leaders() {
       </div>
       <table className="statgrid statgrid--full">
         <thead>
-          <tr><th>#</th><th className="left">Player</th><th className="left">Team</th><th>Cl</th><th>GP</th><th>{label.slice(0,3).toUpperCase()}</th></tr>
+          <tr><th>#</th><th className="left">Player</th><th className="left">Team</th><th>Pos</th><th>Cl</th><th>GP</th><th>{label.slice(0,3).toUpperCase()}</th></tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.player.id} className={r.teamId === userTeamId ? 'is-user' : ''}>
               <td className="rank">{i + 1}</td>
               <td className="left">
-                <span className="playercell">{r.player.name} {r.player.isStar && <span className="star">★</span>}</span>
+                <span className="playercell">
+                  {r.player.name} {wearsStar(r.player) && <span className="star">★</span>}
+                </span>
               </td>
               <td className="left"><span className="teamcell"><TeamBadge teamId={r.teamId} size={20} /><span className="small">{TEAMS_BY_ID[r.teamId].abbr}</span></span></td>
+              <td><span className="posbadge posbadge--sm">{r.player.position}</span></td>
               <td className="muted small">{r.player.class}</td>
               <td>{r.gp}</td>
               <td className="strong">{r.value}</td>

@@ -12,9 +12,11 @@ game logic can be ported/served later (see Architecture).
 - `npm run dev` — dev server at http://localhost:5173/ (exposed on LAN via `server.host` in `vite.config.js`)
 - `npm run build` — production build to `dist/` (use this to catch compile errors)
 - `npm run preview` — serve the built app
-- `npm run calibrate -- [seasons]` — **run this after touching roster generation
-  or any simulation weight.** Sims N full seasons headless and diffs the result
-  against the historical record in `data/marchmadness.js`.
+- `npm run calibrate -- [seasons]` — **run this after touching roster generation,
+  the offseason, or any simulation weight.** Sims N full seasons headless and
+  diffs the result against the historical record in `data/marchmadness.js`. Its
+  last section (`DYNASTY DRIFT`) then ages a league a decade and checks that a
+  carried-over league still has the same shape as a freshly generated one.
 
 Headless engine checks: the store + engine are pure ESM importable in Node
 (no JSX), so a `node script.mjs` that imports `src/store/useGame.js`, calls
@@ -38,7 +40,10 @@ data/  →  engine/  →  store/  →  components/
   distributions. **Facts, not logic** — the engine never reads it at runtime; it
   is the calibration target the sim constants were tuned against.
 - `engine/random.js` — RNG helpers (`gaussian` (Box-Muller), `shuffle`, `weightedIndex`, `pick`, `clamp`, `round1`).
-- `engine/players.js` — `generateRoster(team)`, `overallTier()`, `seasonAverages()`, `careerAverages()`.
+- `engine/players.js` — `generateRoster(team, cycle)`, `generatePlayer()`, `projectStats()`, `normalizeProjections()`, `overallTier()`, `wearsStar()`, `seasonAverages()`, `careerAverages()`.
+- `engine/offseason.js` — the dynasty step: `advanceRoster(teamState, team)` plus
+  `proDeclareChance`, `transferOutChance`, `developPlayer`, `recruitClass`,
+  `rollCycle`/`nextCycle`. See "The offseason" below.
 - `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`.
 - `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
@@ -47,7 +52,7 @@ data/  →  engine/  →  store/  →  components/
 - `audio/sfx.js` — Web Audio reveal SFX, synthesized (no asset files). One
   fanfare per `overallTier`; sits outside `engine/` because it touches browser
   APIs. Exports `playRevealSfx(tier)`, `playTeamSfx()`, `setMuted`/`isMuted`.
-- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `PlayerCard`, `common.jsx`.
+- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `OffseasonReveal`, `Interstitials` (phase gates), `PlayerCard`, `common.jsx`.
 
 ## Key domain concepts
 
@@ -58,11 +63,28 @@ data/  →  engine/  →  store/  →  components/
 bracket lives ONLY here, not in Stats.
 
 `BLANK_SEASON` in the store is the single source of truth for "what resets
-between seasons". `newSeason()` re-runs `selectTeam` with the current program
-(fresh rosters league-wide, `seasonNumber++`); `abandonSeason()` does the same
-but drops back to `SELECT`. Anything that should survive a new season
-(`userTeamId`, `seasonNumber`, `version`, `seasonStart`) must stay OUT of
+between seasons". `selectTeam(id)` starts a dynasty at season 1 with generated
+rosters league-wide; `newSeason()` ages the league one year (see "The offseason");
+`abandonSeason()` drops back to `SELECT`. Anything that should survive a new
+season (`userTeamId`, `seasonNumber`, `version`, `seasonStart`) must stay OUT of
 `BLANK_SEASON`.
+
+### Phase gates (the interstitials)
+Each phase change raises a one-shot flag that `App` renders as a full-screen gate,
+dismissed by an action of the same name. They render in a fixed priority chain in
+`App` so two can never stack:
+
+| flag | raised when | component |
+|---|---|---|
+| `showReveal` | `selectTeam` | `RosterReveal` |
+| `showOffseason` | `newSeason` | `OffseasonReveal` |
+| `showSeasonSummary` | REGULAR → CONF_TOURNEY | `Interstitials.SeasonSummary` |
+| `showConfChamp` | CONF_TOURNEY → NATIONAL | `Interstitials.ConferenceChampBanner` |
+| `showChampBanner` | NATIONAL → DONE | `App.ChampionBanner` |
+
+They work because `_runSim` already stops at every phase boundary. The conference
+champion banner deliberately says nothing about whether the *user* made the field —
+that reveal belongs to Selection Sunday, which is the very next screen.
 
 ### The simulation loop
 `_stepDay()` advances the calendar ONE day, sims all games on that date across
@@ -85,10 +107,20 @@ get skipped.
 drag-and-drop: `"S:PG".."S:C"` and `"B:0".."B:4"`. Minutes are DERIVED, not set:
 starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineup(fromSlot, toSlot)` swaps occupants. `starId` gives a usage boost in the sim.
 
+`starId` is **not user-editable** — it is always the highest-overall player, set
+by `defaultLineup` and re-derived whenever the roster turns over (the player's own
+`isStar` flag names the same man). `wearsStar(player, starId)` decides who shows a
+★ in the UI: the featured player *and* anyone at diamond tier (90+).
+
+Minutes are no longer only a scoring input: the offseason develops players in
+proportion to the minutes they played, so the rotation is a multi-year decision.
+
 ### Roster generation (`generateRoster`) — four stages, in order
-1. **Team talent level** — `prestigeToOverall(prestige) + gaussian(0, 3.6)`. The
-   noise is the point: it gives blue-bloods down years and mid-majors dream
-   teams. Deliberately conservative; the top of a roster is NOT built here.
+1. **Team talent level** — `prestigeToOverall(prestige) + cycle`, where `cycle`
+   defaults to `gaussian(0, TEAM_NOISE_SD)`. The noise is the point: it gives
+   blue-bloods down years and mid-majors dream teams. Deliberately conservative;
+   the top of a roster is NOT built here. (The store passes an explicit `cycle`
+   and stores it on the team state so the offseason can carry it forward.)
 2. **`spread`** — how top-heavy the roster is, wider at high prestige. Applied
    through `TALENT_LADDER`, a 10-step curve re-centered on its own mean so
    `spread` changes a roster's SHAPE without changing how strong the team is.
@@ -104,6 +136,40 @@ starters 30 each, bench `[22,13,8,5,2]` (6th→10th man) = 200 total. `swapLineu
 Tuned so `npm run calibrate` reports: Duke starters ~83 / bench ~68, ~14 diamonds
 and ~0.5 rainbows league-wide per season, and ~2 diamond+ players per season at
 sub-65-prestige programs.
+
+### The offseason (`engine/offseason.js`) — the dynasty loop
+`newSeason()` runs `advanceRoster` for **every** team in the league, then rebuilds
+the schedule. Rosters carry over; only the user's departures/arrivals are kept (in
+`store.offseason`) for `OffseasonReveal` to replay. Three stages:
+
+1. **Departures.** Every senior graduates. Underclassmen declare for the pro
+   league on `proDeclareChance` — talent is the gate, prestige the multiplier, so
+   nobody under `PRO_FLOOR` (74) ever leaves and a 92 at a blue-blood almost
+   always does. Buried reserves (`depthRank >= 5`) may transfer out.
+2. **Development.** `developPlayer` folds the season just played into the career
+   line, resets the accumulators, advances the class, and closes part of the gap
+   to `potential`. The gain scales with **minutes played** — which is what keeps
+   rotations top-heavy instead of flattening toward the roster average, and is why
+   `potential` headroom now grows with a player's rating (`rollPotential`).
+3. **Recruiting.** `recruitClass` fills *exactly the positions that opened*, which
+   is what keeps every roster two-deep at all five positions forever —
+   `defaultLineup` would throw on an empty position. Recruits arrive
+   `RECRUIT_DISCOUNT` below the program's level and grow into it. Roughly 10-22%
+   of arrivals are portal transfers instead of freshmen (older, better now, less
+   headroom); the same talent lottery runs for the headline signing.
+
+**The program cycle is load-bearing.** A carried-over roster is four recruiting
+classes averaged together, and four independent draws average *out* — left alone,
+the league's strength spread collapses ~20%, blue-bloods regress to the mean, and
+since `MARGIN_PER_RATING` turns strength spread into point spreads, every seed line
+converges. So `cycle` is an AR(1) with `CYCLE_PERSISTENCE` memory and a stationary
+spread of `TEAM_NOISE_SD`: a program's rise or fall lasts several seasons, and an
+aged league keeps the same shape as a generated one. `npm run calibrate`'s
+`DYNASTY DRIFT` table is the check — the two rows must stay close.
+
+Known residual: after a decade the blue-blood band sits ~2 points below a fresh
+league's, because the pros drain the best underclassmen and generation never does.
+That is arguably the more realistic of the two.
 
 ### Simulation weighting — all calibrated against `data/marchmadness.js`
 `simulateGame` is `ratingGap * MARGIN_PER_RATING + home court`, scattered by
@@ -126,11 +192,16 @@ flip by construction. Our seeding is strictly merit-ordered, so it can't
 reproduce that. Everything else lands within ~4 points.
 
 ### Player stats
-- `projPpg/projApg/projReb` — internal sim weights, normalized at generation so
-  the roster sums to a realistic team total (~73 pts). NOT displayed directly.
+- `projPpg/projApg/projReb` — internal sim weights (`projectStats`), then
+  `normalizeProjections` scales them so the roster sums to a realistic team total
+  (~73 pts). NOT displayed directly. **Any code that changes roster membership
+  must re-run `normalizeProjections`** — the offseason does.
 - Accumulated `gp/pts/ast/reb/min` → `seasonAverages(p)` (null before any games).
-- `careerGp/careerPpg/...` — generated backstory for returning players; freshmen
-  have none → `careerAverages(p)` returns null (shown as dashes).
+- `careerGp/careerPpg/...` — generated backstory for a player's seasons before you
+  had him, then genuinely accumulated each offseason. Freshmen have none →
+  `careerAverages(p)` returns null (shown as dashes).
+- `potential` is the ceiling development walks toward; `lastOverall` is set by
+  `developPlayer` so the offseason screen can show the year's ▲/▼.
 - **Reveal shows career averages; Roster shows season averages.**
 - `overallTier(ovr)`: 99=rainbow, 90-98=diamond, 80-89=gold, 70-79=silver, else base. Drives `PlayerCard` colors and reveal animation drama.
 
@@ -163,8 +234,12 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
 
 ## Known limitations / possible next steps
 - **No persistence** — refresh resets everything. (Postgres/localStorage TBD.)
-- **No true dynasty** — `newSeason()` regenerates every roster from scratch; no
-  recruiting, player progression, or carry-over history between seasons yet.
+- **No dynasty history** — rosters, development and recruiting now carry across
+  seasons, but nothing *records* the seasons: no year-by-year team history, no
+  banners, no career leaderboards, no coach reputation feeding back into prestige
+  (`team.prestige` is static data, so winning never makes a program stronger).
+- **Recruiting is not a decision** — `recruitClass` hands you a class sized to your
+  departures at your prestige level. There is no board, no pitch, no competition.
 - Drag-and-drop uses native HTML5 DnD → **mouse only, not touch**.
 - Season calendar is date-compressed (title game lands ~late Feb, not April).
 - When adding a conference, keep it **≥8 teams** — `seedConferenceTournaments`

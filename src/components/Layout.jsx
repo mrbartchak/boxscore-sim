@@ -85,7 +85,7 @@ function SeasonControls({ phase }) {
   if (confirming) {
     return (
       <div className="topbar__actions">
-        <span className="topbar__confirm">Abandon this season?</span>
+        <span className="topbar__confirm">Abandon this program?</span>
         <button className="btn btn--danger" onClick={() => { stopSim(); abandonSeason(); }}>Yes, quit</button>
         <button className="btn" onClick={() => setConfirming(false)}>Cancel</button>
       </div>
@@ -96,11 +96,11 @@ function SeasonControls({ phase }) {
     <div className="topbar__actions">
       {phase === 'DONE' && (
         <button className="btn btn--primary" onClick={() => { stopSim(); newSeason(); }}>
-          New Season →
+          Offseason →
         </button>
       )}
       <button className="btn btn--ghost" onClick={() => setConfirming(true)} title="Quit and pick a new program">
-        Abandon Season
+        Abandon Program
       </button>
     </div>
   );

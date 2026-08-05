@@ -29,15 +29,21 @@ function makeName() {
 // the top of a roster is built by the ladder and the talent lottery below, not
 // by this line, which keeps the 90s reserved for players who earned them
 // instead of handing every blue-blood a ceiling-scraping rating.
-function prestigeToOverall(prestige) {
+export function prestigeToOverall(prestige) {
   return 42 + (prestige / 100) * 35;
 }
+
+// How far a program's talent level swings around its prestige in a given year.
+// This is what gives blue-bloods down years and mid-majors dream teams. The
+// offseason carries it forward as a slow-moving cycle rather than re-rolling it,
+// so a program's rise and fall lasts several seasons — see engine/offseason.js.
+export const TEAM_NOISE_SD = 3.6;
 
 // Talent curve down the rotation, in units of the roster's `spread`. Real
 // rosters fall off a cliff after the top few — the 9th and 10th men are deep
 // reserves, not near-starters. Re-centered on its own mean so `spread` changes
 // the SHAPE of a roster without quietly changing how strong the team is.
-const TALENT_LADDER = (() => {
+export const TALENT_LADDER = (() => {
   const raw = [0.62, 0.42, 0.24, 0.08, -0.05, -0.28, -0.52, -0.8, -1.15, -1.55];
   const mean = raw.reduce((a, b) => a + b, 0) / raw.length;
   return raw.map((v) => v - mean);
@@ -52,30 +58,45 @@ function rollClass(p) {
   return CLASSES[weightedIndex(CLASS_MIX_ELITE.map((e, i) => e * p + CLASS_MIX_SMALL[i] * (1 - p)))];
 }
 
-function generatePlayer(position, overall, cls, isStar) {
-  const arch = ARCHETYPE[position];
+// Projected per-game production for a player's CURRENT rating and position.
+// These act as tendencies for the sim and as the fallback display line before
+// any games are played. Recomputed every offseason so a developing player's
+// line grows with him. Mutates `p` and returns it.
+export function projectStats(p, isStar) {
+  const arch = ARCHETYPE[p.position];
 
   // Overall (35-99) scaled to a 0..1 quality factor, softened.
-  const q = clamp((overall - 40) / 55, 0, 1.15);
-
-  // Projected per-game production. These act as tendencies for the sim and as
-  // the fallback display line before any games are played.
+  const q = clamp((p.overall - 40) / 55, 0, 1.15);
   const usage = isStar ? 1.25 : 1;
-  const projPpg = round1(clamp(gaussian(4 + q * 15 * arch.score * usage, 2.2), 1, 30));
-  const projApg = round1(clamp(gaussian(0.6 + q * 3.5 * arch.assist, 0.8), 0.1, 10));
-  const projReb = round1(clamp(gaussian(1 + q * 5 * arch.rebound, 1.1), 0.4, 15));
 
-  return {
+  p.projPpg = round1(clamp(gaussian(4 + q * 15 * arch.score * usage, 2.2), 1, 30));
+  p.projApg = round1(clamp(gaussian(0.6 + q * 3.5 * arch.assist, 0.8), 0.1, 10));
+  p.projReb = round1(clamp(gaussian(1 + q * 5 * arch.rebound, 1.1), 0.4, 15));
+  return p;
+}
+
+// Room left to grow. Younger players have more of it, and so do better ones: a
+// blue-chip is being scouted for a professional ceiling, while a 55-overall
+// reserve is already close to the player he will always be.
+const CLASS_ROOM = { FR: 12, SO: 8, JR: 4, SR: 4 };
+
+function rollPotential(overall, cls) {
+  const elite = clamp((overall - 72) / 6, 0, 4);
+  return clamp(overall + randInt(0, Math.round(CLASS_ROOM[cls] + elite)), 35, 99);
+}
+
+export function generatePlayer(position, overall, cls, isStar) {
+  const p = {
     id: `p${_pid++}`,
     name: makeName(),
     position,
     class: cls,
     overall,
-    potential: clamp(overall + randInt(0, cls === 'FR' ? 12 : cls === 'SO' ? 8 : 4), 35, 99),
+    potential: rollPotential(overall, cls),
     isStar,
-    projPpg,
-    projApg,
-    projReb,
+    projPpg: 0,
+    projApg: 0,
+    projReb: 0,
     // Accumulated real season stats.
     gp: 0,
     min: 0,
@@ -88,12 +109,13 @@ function generatePlayer(position, overall, cls, isStar) {
     careerApg: 0,
     careerReb: 0,
   };
+  return projectStats(p, isStar);
 }
 
 const PRIOR_SEASONS = { FR: 0, SO: 1, JR: 2, SR: 3 };
 
 // Give returning players a plausible career history (younger seasons = lower).
-function assignCareer(p) {
+export function assignCareer(p) {
   const seasons = PRIOR_SEASONS[p.class];
   if (seasons === 0) return;
   p.careerGp = seasons * randInt(28, 33);
@@ -110,13 +132,22 @@ function scaleStat(players, key, total) {
   players.forEach((p) => (p[key] = round1(p[key] * f)));
 }
 
-export function generateRoster(team) {
+// Normalize projected production so the roster sums to a realistic team line —
+// everyone's points must add up to what the team actually scores. Run on any
+// roster whose membership changed, not just freshly generated ones.
+export function normalizeProjections(players, team) {
+  scaleStat(players, 'projPpg', clamp(gaussian(70 + team.prestige * 0.05, 3), 60, 80));
+  scaleStat(players, 'projApg', clamp(gaussian(14, 1.2), 10, 18));
+  scaleStat(players, 'projReb', clamp(gaussian(34, 1.8), 28, 40));
+}
+
+export function generateRoster(team, cycle = gaussian(0, TEAM_NOISE_SD)) {
   const p = team.prestige / 100;
 
-  // 1. This program's talent level THIS season. The noise term is what makes a
+  // 1. This program's talent level THIS season. The `cycle` term is what makes a
   //    blue-blood's down year and a mid-major's dream team possible — without
   //    it every 95-prestige roster comes out the same shade of gold.
-  const base = prestigeToOverall(team.prestige) + gaussian(0, 3.6);
+  const base = prestigeToOverall(team.prestige) + cycle;
 
   // 2. How top-heavy the roster is. Elite programs concentrate talent in a star
   //    or two and stash prospects at the end of the bench; small schools run
@@ -159,12 +190,7 @@ export function generateRoster(team) {
   const star = players[0]; // ladder is sorted, so index 0 is the best player
   star.projPpg *= 1.3; // heavier scoring share before normalization
 
-  // Normalize projected production so the roster sums to a realistic team line.
-  // (Everyone's points must add up to what the team actually scores.)
-  scaleStat(players, 'projPpg', clamp(gaussian(70 + team.prestige * 0.05, 3), 60, 80));
-  scaleStat(players, 'projApg', clamp(gaussian(14, 1.2), 10, 18));
-  scaleStat(players, 'projReb', clamp(gaussian(34, 1.8), 28, 40));
-
+  normalizeProjections(players, team);
   players.forEach(assignCareer);
   return players;
 }
@@ -177,6 +203,14 @@ export function overallTier(overall) {
   if (overall >= 80) return 'gold';
   if (overall >= 70) return 'silver';
   return 'base';
+}
+
+// Who wears a ★: the team's featured player (the one carrying the usage boost in
+// the sim) and anyone at diamond tier or better, whose talent speaks for itself.
+// `starId` is optional — the player's own flag names the same man, and callers
+// working off a league-wide list don't have a rotation to consult.
+export function wearsStar(player, starId) {
+  return player.isStar || player.id === starId || player.overall >= 90;
 }
 
 // Current-season averages, or null before any games have been played.

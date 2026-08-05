@@ -8,7 +8,6 @@ const BENCH_LABELS = ['6th Man', '7th Man', '8th Man', '9th Man', '10th Man'];
 
 export default function RosterView() {
   const ts = useGame((s) => s.teamStates[s.userTeamId]);
-  const setStar = useGame((s) => s.setStar);
   const swapLineup = useGame((s) => s.swapLineup);
 
   const [dragSlot, setDragSlot] = useState(null);
@@ -44,8 +43,7 @@ export default function RosterView() {
         player={player}
         layout="tile"
         stats={seasonAverages(player)}
-        isStar={player.id === ts.rotation.starId}
-        onToggleStar={() => setStar(player.id)}
+        starId={ts.rotation.starId}
         className={dragSlot === slot ? 'is-dragging' : ''}
         rootProps={{
           draggable: true,
@@ -67,7 +65,8 @@ export default function RosterView() {
         </div>
         <p className="roster__hint">
           Drag any player onto another slot to swap them. Starters split the most minutes; bench minutes fall
-          off from your 6th man down to your 10th. Tap ★ to set your star (a usage boost).
+          off from your 6th man down to your 10th — and minutes drive development, so who you play now is who
+          you'll have in three years. ★ marks your best player and anyone at diamond tier.
         </p>
       </div>
 
