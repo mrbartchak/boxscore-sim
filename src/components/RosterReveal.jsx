@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { careerAverages, overallTier, POSITIONS } from '../engine/players.js';
-import { TeamBadge, contrastColor } from './common.jsx';
+import { TeamBadge, contrastColor, accentColor } from './common.jsx';
 import { playRevealSfx, playTeamSfx, isMuted, setMuted } from '../audio/sfx.js';
 import PlayerCard from './PlayerCard.jsx';
 
@@ -63,7 +63,7 @@ export default function RosterReveal() {
   const allShown = revealed >= starters.length;
 
   return (
-    <div className="reveal" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
+    <div className="reveal" style={{ '--team': team.color, '--team-accent': accentColor(team.color), '--team-text': contrastColor(team.color) }}>
       <button
         className="btn btn--icon reveal__mute"
         onClick={toggleMute}

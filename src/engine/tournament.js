@@ -23,34 +23,49 @@ export function seedOrder(n) {
 
 // Build a single-elim bracket. teamsBySeed[0] is the #1 seed, etc.
 // Later-round games start with null participants and are filled by feeders.
+//
+// `teamsBySeed` may be SHORTER than the bracket, in which case the top seeds
+// draw byes: their first-round game is never created and they are placed
+// straight into round two, exactly as a small conference tournament does it.
 export function buildSingleElim(teamsBySeed, startDate, gapDays, phase) {
-  const n = teamsBySeed.length; // power of 2
-  const order = seedOrder(n);
-  const numRounds = Math.log2(n);
+  const size = 1 << Math.ceil(Math.log2(Math.max(2, teamsBySeed.length)));
+  const order = seedOrder(size);
+  const numRounds = Math.log2(size);
   const games = [];
+  const teamAt = (seed) => teamsBySeed[seed - 1] ?? null;
 
-  let prevRound = [];
+  // Round 0 entries are either a real game or a bye carrying a team forward.
   let date = startDate;
-  for (let i = 0; i < n; i += 2) {
+  let prevRound = [];
+  for (let i = 0; i < size; i += 2) {
     const seedA = order[i];
     const seedB = order[i + 1];
-    const g = {
-      id: `x${_tid++}`,
-      phase,
-      round: 0,
-      date,
-      neutral: true,
-      homeId: teamsBySeed[seedA - 1],
-      awayId: teamsBySeed[seedB - 1],
-      seedHome: seedA,
-      seedAway: seedB,
-      played: false,
-      result: null,
-      nextGameId: null,
-      nextSlot: null,
-    };
-    games.push(g);
-    prevRound.push(g);
+    const teamA = teamAt(seedA);
+    const teamB = teamAt(seedB);
+
+    if (teamA && teamB) {
+      const g = {
+        id: `x${_tid++}`,
+        phase,
+        round: 0,
+        date,
+        neutral: true,
+        homeId: teamA,
+        awayId: teamB,
+        seedHome: seedA,
+        seedAway: seedB,
+        played: false,
+        result: null,
+        nextGameId: null,
+        nextSlot: null,
+      };
+      games.push(g);
+      prevRound.push({ game: g });
+    } else {
+      // A bye: whoever is present advances with their seed intact.
+      const teamId = teamA ?? teamB;
+      prevRound.push({ bye: { teamId, seed: teamA ? seedA : seedB } });
+    }
   }
 
   for (let r = 1; r < numRounds; r++) {
@@ -72,17 +87,23 @@ export function buildSingleElim(teamsBySeed, startDate, gapDays, phase) {
         nextGameId: null,
         nextSlot: null,
       };
-      prevRound[i].nextGameId = g.id;
-      prevRound[i].nextSlot = 'home';
-      prevRound[i + 1].nextGameId = g.id;
-      prevRound[i + 1].nextSlot = 'away';
+      [prevRound[i], prevRound[i + 1]].forEach((entry, k) => {
+        const slot = k === 0 ? 'home' : 'away';
+        if (entry.game) {
+          entry.game.nextGameId = g.id;
+          entry.game.nextSlot = slot;
+        } else if (entry.bye) {
+          g[slot === 'home' ? 'homeId' : 'awayId'] = entry.bye.teamId;
+          g[slot === 'home' ? 'seedHome' : 'seedAway'] = entry.bye.seed;
+        }
+      });
       games.push(g);
-      cur.push(g);
+      cur.push({ game: g });
     }
     prevRound = cur;
   }
 
-  return { games, lastDate: date, finalGameId: prevRound[0].id };
+  return { games, lastDate: date, finalGameId: prevRound[0].game.id };
 }
 
 // One 8-team single-elim tournament per conference (top 8 by conf record).

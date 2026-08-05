@@ -3,7 +3,7 @@ import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate, addDays } from '../engine/schedule.js';
 import { wearsStar } from '../engine/players.js';
-import { TeamBadge, TeamName } from './common.jsx';
+import { TeamBadge, TeamName, accentColor } from './common.jsx';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -162,7 +162,7 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
           return (
             <button
               key={i}
-              style={opp ? { '--opp': opp.color } : undefined}
+              style={opp ? { '--opp': opp.color, '--opp-ink': accentColor(opp.color) } : undefined}
               className={[
                 'cal-cell',
                 isCurrent && 'is-current',
@@ -254,7 +254,9 @@ function GameRow({ game, userTeamId }) {
           {won ? 'W' : 'L'} {isHome ? game.result.homePts : game.result.awayPts}-{isHome ? game.result.awayPts : game.result.homePts}
         </span>
       ) : (
-        <span className="pill pill--muted">{game.phase === 'REGULAR' ? '' : 'Tourney'}</span>
+        <span className="pill pill--muted">
+          {game.phase !== 'REGULAR' ? 'Tourney' : game.conference ? 'Conf' : 'Non-conf'}
+        </span>
       )}
     </div>
   );

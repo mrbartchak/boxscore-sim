@@ -11,7 +11,7 @@
 import { useGame } from '../src/store/useGame.js';
 import { TEAMS } from '../src/data/teams.js';
 import { generateRoster, overallTier } from '../src/engine/players.js';
-import { teamStrength, defaultLineup } from '../src/engine/simulation.js';
+import { teamStrength, defaultLineup, MARGIN_PER_RATING } from '../src/engine/simulation.js';
 import {
   R64_FAVORITE_WIN_PCT,
   R64_TYPICAL_SPREAD,
@@ -183,7 +183,7 @@ function tournamentReport() {
     const hist = R64_FAVORITE_WIN_PCT[key];
     const gaps = spreadGap[key];
     const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-    const simSpread = avgGap * 1.8; // MARGIN_PER_RATING
+    const simSpread = avgGap * MARGIN_PER_RATING;
     console.log(
       `${key.padEnd(8)} ${pct(sim)}  ${pct(hist)}     ${sign((sim - hist) * 100).padStart(5)}  |  ` +
         `${simSpread.toFixed(1).padStart(9)}  ${String(R64_TYPICAL_SPREAD[key]).padStart(9)}`

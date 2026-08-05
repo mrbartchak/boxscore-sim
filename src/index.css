@@ -10,6 +10,7 @@
   --muted: #8892ac;
   --faint: #5b6480;
   --team: #3b82f6;
+  --team-accent: #3b82f6; /* the team color, lightened when it's too dark to read */
   --team-text: #fff;
   --win: #34d399;
   --loss: #fb7185;
@@ -66,11 +67,13 @@ table { border-collapse: collapse; width: 100%; }
 .btn--icon { padding: 6px 12px; font-size: 18px; line-height: 1; }
 
 /* ---------- Badges ---------- */
+/* The rim is the team's own color brightened — it keeps a #001A57 or #000000
+   badge from dissolving into the background without repainting the team. */
 .badge {
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 8px; font-weight: 800; letter-spacing: 0.3px;
   position: relative; flex-shrink: 0; overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--rim, rgba(255,255,255,0.5)) 55%, transparent);
 }
 .badge--empty { background: var(--surface-3); border-radius: 8px; width: 18px; height: 18px; }
 .badge__seed {
@@ -117,7 +120,7 @@ table { border-collapse: collapse; width: 100%; }
   content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--team);
 }
 .teamcard:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
-.teamcard.is-selected { border-color: var(--team); box-shadow: 0 0 0 2px var(--team); }
+.teamcard.is-selected { border-color: var(--team-accent); box-shadow: 0 0 0 2px var(--team-accent); }
 .teamcard__info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .teamcard__name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -144,7 +147,7 @@ table { border-collapse: collapse; width: 100%; }
 .topbar__sub { color: var(--muted); font-size: 12px; }
 .topbar__conf-rec { color: var(--faint); }
 .topbar__status { text-align: right; min-width: 180px; }
-.topbar__phase { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--team); font-weight: 700; }
+.topbar__phase { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--team-accent); font-weight: 700; }
 .topbar__date { font-size: 15px; font-weight: 700; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; }
 .topbar__confirm { font-size: 12px; color: var(--muted); }
@@ -186,16 +189,20 @@ table { border-collapse: collapse; width: 100%; }
 .cal-cell.has-game { background: var(--surface-2); }
 
 /* A game day wears the opponent's colors — a band across the top plus a wash
-   over the cell, so the month reads as a run of opponents at a glance. */
+   over the cell, so the month reads as a run of opponents at a glance. The band
+   uses the lightened ink so navy-and-black programs still register; the wash
+   underneath stays the true color. */
 .cal-cell.has-opp {
-  background: color-mix(in srgb, var(--opp) 20%, var(--bg-2));
-  border-color: color-mix(in srgb, var(--opp) 45%, transparent);
+  background: color-mix(in srgb, var(--opp) 22%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--opp-ink) 40%, transparent);
 }
 .cal-cell.has-opp::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--opp);
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, var(--opp), var(--opp-ink));
 }
-.cal-cell.has-opp:hover { background: color-mix(in srgb, var(--opp) 32%, var(--bg-2)); }
+.cal-cell.has-opp:hover { background: color-mix(in srgb, var(--opp) 34%, var(--bg-2)); }
 .cal-cell.has-opp .cal-cell__day { color: var(--text); opacity: 0.75; margin-top: 2px; }
+.cal-cell.has-opp .cal-cell__abbr { color: var(--opp-ink); }
 
 .cal-cell__game { display: flex; flex-direction: column; gap: 2px; margin-top: auto; min-width: 0; }
 .cal-cell__opp { display: flex; align-items: baseline; gap: 4px; }
@@ -210,10 +217,13 @@ table { border-collapse: collapse; width: 100%; }
 .cal-cell.is-loss { border-color: color-mix(in srgb, var(--loss) 45%, transparent); }
 
 .cal-cell.is-current {
-  border-color: var(--team); box-shadow: 0 0 0 2px var(--team), 0 0 18px rgba(59,130,246,0.4);
+  border-color: var(--team-accent); box-shadow: 0 0 0 2px var(--team-accent), 0 0 18px color-mix(in srgb, var(--team-accent) 45%, transparent);
   animation: pulse 1.6s ease-in-out infinite;
 }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 2px var(--team), 0 0 14px rgba(59,130,246,0.3);} 50% { box-shadow: 0 0 0 2px var(--team), 0 0 22px rgba(59,130,246,0.55);} }
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 2px var(--team-accent), 0 0 14px color-mix(in srgb, var(--team-accent) 30%, transparent); }
+  50% { box-shadow: 0 0 0 2px var(--team-accent), 0 0 22px color-mix(in srgb, var(--team-accent) 55%, transparent); }
+}
 .cal-cell.is-selected { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
 .cal-cell.is-detail { border-color: var(--border-strong); }
 
@@ -323,7 +333,7 @@ table { border-collapse: collapse; width: 100%; }
 .brow--won .brow__name, .brow--won .brow__pts { font-weight: 800; }
 .brow--lost { opacity: 0.45; }
 .brow--lost .brow__name { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.4); }
-.brow--user { box-shadow: inset 3px 0 0 var(--team); background: color-mix(in srgb, var(--team) 14%, transparent); }
+.brow--user { box-shadow: inset 3px 0 0 var(--team-accent); background: color-mix(in srgb, var(--team-accent) 16%, transparent); }
 .brow--user.brow--won { background: color-mix(in srgb, var(--win) 18%, transparent); }
 .brow--user.brow--lost { opacity: 0.7; background: color-mix(in srgb, var(--loss) 14%, transparent); }
 .brow--user .brow__name { font-weight: 800; }
@@ -339,12 +349,12 @@ table { border-collapse: collapse; width: 100%; }
 .matchup--won { border-color: var(--win); box-shadow: 0 0 0 1px rgba(52,211,153,0.35); }
 .matchup--lost { border-color: var(--loss); box-shadow: 0 0 0 1px rgba(251,113,133,0.3); }
 .matchup--next {
-  border-color: var(--team); box-shadow: 0 0 0 2px var(--team), 0 0 16px color-mix(in srgb, var(--team) 45%, transparent);
+  border-color: var(--team-accent); box-shadow: 0 0 0 2px var(--team-accent), 0 0 16px color-mix(in srgb, var(--team-accent) 45%, transparent);
   animation: pulseNext 1.8s ease-in-out infinite;
 }
 @keyframes pulseNext {
-  0%, 100% { box-shadow: 0 0 0 2px var(--team), 0 0 10px color-mix(in srgb, var(--team) 35%, transparent); }
-  50% { box-shadow: 0 0 0 2px var(--team), 0 0 22px color-mix(in srgb, var(--team) 65%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 2px var(--team-accent), 0 0 10px color-mix(in srgb, var(--team-accent) 35%, transparent); }
+  50% { box-shadow: 0 0 0 2px var(--team-accent), 0 0 22px color-mix(in srgb, var(--team-accent) 65%, transparent); }
 }
 
 /* Tournament status bar: seed, region, and what happens next. */
@@ -353,12 +363,12 @@ table { border-collapse: collapse; width: 100%; }
   background: var(--surface); border: 1px solid var(--border);
   border-left: 4px solid var(--muted); border-radius: var(--radius); padding: 14px 18px;
 }
-.tstatus--alive { border-left-color: var(--team); }
+.tstatus--alive { border-left-color: var(--team-accent); }
 .tstatus--won { border-left-color: var(--gold); }
 .tstatus--out { border-left-color: var(--loss); }
 .tstatus__main { flex: 1; min-width: 180px; }
 .tstatus__headline { font-size: 17px; font-weight: 800; }
-.tstatus--alive .tstatus__headline { color: var(--team); }
+.tstatus--alive .tstatus__headline { color: var(--team-accent); }
 .tstatus--won .tstatus__headline { color: var(--gold); }
 .tstatus__detail { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .tstatus__seed { display: flex; align-items: center; gap: 10px; }
@@ -427,14 +437,14 @@ table { border-collapse: collapse; width: 100%; }
 /* ================= ROSTER LINEUP ================= */
 .lineup__row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 .starters {
-  border: 1.5px solid var(--team); border-radius: 16px; padding: 14px;
+  border: 1.5px solid var(--team-accent); border-radius: 16px; padding: 14px;
   background: color-mix(in srgb, var(--team) 7%, transparent); margin-bottom: 20px;
 }
 .starters__title, .benchsec__title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 12px; font-weight: 700; }
-.starters__title { color: var(--team); }
+.starters__title { color: var(--team-accent); }
 .benchsec { margin-bottom: 4px; }
 .slot { border: 1px dashed transparent; border-radius: 14px; padding: 3px; transition: background 0.12s, border-color 0.12s; }
-.slot.is-over { border-color: var(--team); background: rgba(59, 130, 246, 0.12); }
+.slot.is-over { border-color: var(--team-accent); background: color-mix(in srgb, var(--team-accent) 16%, transparent); }
 .slot.is-source { opacity: 0.5; }
 .slot__label { display: flex; justify-content: space-between; align-items: center; padding: 0 6px 4px; }
 .slot__role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
@@ -471,6 +481,38 @@ table { border-collapse: collapse; width: 100%; }
 .selection__seed { font-size: 22px; font-weight: 800; text-align: left; }
 .selection__region { color: var(--muted); font-size: 13px; text-align: left; }
 
+/* Selection Sunday: the field, then the region, then the number. */
+.selection__logo.is-waiting { animation: mystery 0.9s ease-in-out infinite alternate; }
+.selection__waiting { color: var(--muted); }
+.selection__reveal { animation: popIn 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.3); }
+.selection__region-big {
+  font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+  color: var(--team-accent); margin: 12px 0 18px;
+}
+.seedcard {
+  display: flex; align-items: center; gap: 18px; justify-content: center;
+  background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: 16px;
+  padding: 18px 24px; margin-bottom: 16px;
+}
+.seedcard__num {
+  font-size: 62px; font-weight: 900; line-height: 1; letter-spacing: -3px;
+  color: var(--team-accent);
+  animation: seedPop 0.7s cubic-bezier(0.2, 0.8, 0.3, 1.5);
+}
+@keyframes seedPop {
+  0% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  55% { opacity: 1; transform: scale(1.25) rotate(3deg); }
+  75% { transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.seedcard--pending .seedcard__num { color: var(--faint); animation: none; opacity: 0.5; }
+.seedcard__side { display: flex; align-items: center; gap: 12px; text-align: left; }
+.seedcard__team { font-size: 17px; font-weight: 800; }
+.seedcard__meta { font-size: 12px; color: var(--muted); }
+.selection__opener { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+.selection__opener strong { color: var(--text); }
+.selection__actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+
 /* National bracket: two sides meeting at the championship */
 .natbracket { display: flex; gap: 16px; align-items: stretch; overflow-x: auto; padding-bottom: 12px; }
 .natbracket__side { display: flex; flex-direction: column; gap: 26px; justify-content: space-around; }
@@ -480,7 +522,7 @@ table { border-collapse: collapse; width: 100%; }
 .region__label {
   display: flex; align-items: center; gap: 8px;
   font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-  color: var(--team); font-weight: 700; margin-bottom: 6px;
+  color: var(--team-accent); font-weight: 700; margin-bottom: 6px;
 }
 .region--mirror .region__label { justify-content: flex-end; }
 /* Your region gets a frame so you can find yourself in a 64-team bracket. */
@@ -508,7 +550,7 @@ table { border-collapse: collapse; width: 100%; }
 .reveal__eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
 .reveal__name { font-size: 42px; letter-spacing: -1px; margin: 2px 0; }
 .reveal__conf { color: var(--muted); }
-.reveal__mystery { font-size: 84px; font-weight: 800; color: var(--team); animation: mystery 0.6s ease-in-out infinite alternate; }
+.reveal__mystery { font-size: 84px; font-weight: 800; color: var(--team-accent); animation: mystery 0.6s ease-in-out infinite alternate; }
 @keyframes mystery { from { transform: scale(0.9); opacity: 0.5; } to { transform: scale(1.12); opacity: 1; } }
 .reveal__rostertitle { margin: 36px 0 16px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
 .reveal__cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; width: 100%; }
@@ -560,6 +602,65 @@ table { border-collapse: collapse; width: 100%; }
 @keyframes popIn { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
 
 /* ================= OFFSEASON ================= */
+.reveal__inner--wide { max-width: 1240px; }
+.offseason__steps {
+  display: flex; gap: 8px; list-style: none; margin: 26px 0 0; padding: 0;
+  flex-wrap: wrap; justify-content: center;
+}
+.offseason__step {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--faint); padding: 6px 14px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.offseason__step.is-active { color: var(--team-text); background: var(--team); border-color: transparent; }
+.offseason__stepnum {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 50%; font-size: 10px;
+  background: rgba(0,0,0,0.3);
+}
+.offseason__actions { display: flex; gap: 10px; align-items: center; margin-top: 22px; }
+.offseason__rosternote { color: var(--muted); font-size: 13px; text-align: center; margin: 6px 0 18px; max-width: 640px; }
+.offseason__rosterwrap { width: 100%; }
+
+/* The walk down last year's roster. */
+.devlist { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 6px; }
+.devrow {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--faint); border-radius: 10px; padding: 10px 14px;
+  opacity: 0; animation: devIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;
+}
+@keyframes devIn {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: none; }
+}
+.devrow--up { border-left-color: var(--win); }
+.devrow--down { border-left-color: var(--loss); }
+.devrow--out { border-left-color: var(--gold); opacity: 0.85; }
+.devrow__pos {
+  min-width: 32px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,0.07); color: var(--muted);
+}
+.devrow__name { font-weight: 700; font-size: 14px; flex: 1; min-width: 0; }
+.devrow__class { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.devrow__arrow { color: var(--muted); }
+.devrow__ovr { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+.devrow__from { color: var(--faint); text-decoration: line-through; font-size: 13px; }
+.devrow__to { font-size: 18px; }
+.devrow__delta { font-size: 12px; min-width: 38px; text-align: right; }
+.devrow__delta.is-up { color: var(--win); }
+.devrow__delta.is-down { color: var(--loss); }
+.devrow__delta.is-flat { color: var(--faint); }
+.devrow__reason {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;
+}
+.devrow__reason--graduated { color: var(--gold); }
+.devrow__reason--pro { color: #7fcbe8; }
+.devrow__reason--transfer { color: var(--loss); }
+.devrow__final { color: var(--faint); font-weight: 700; letter-spacing: 0; text-transform: none; }
+
 .offseason__grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; width: 100%; }
 .offseason__leaving { opacity: 0; animation: leaving 0.65s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
 @keyframes leaving {
@@ -579,7 +680,7 @@ table { border-collapse: collapse; width: 100%; }
 .offseason__reason--pro { color: #7fcbe8; background: rgba(127,203,232,0.14); }
 .offseason__reason--transfer { color: var(--loss); background: rgba(251,113,133,0.12); }
 .offseason__tag { color: var(--win); background: rgba(52,211,153,0.12); }
-.offseason__tag--transfer { color: var(--team); background: color-mix(in srgb, var(--team) 16%, transparent); }
+.offseason__tag--transfer { color: var(--team-accent); background: color-mix(in srgb, var(--team-accent) 16%, transparent); }
 
 .offseason__returning { width: 100%; margin-top: 30px; border-top: 1px solid var(--border); padding-top: 18px; }
 .offseason__returningtitle {
@@ -627,7 +728,7 @@ table { border-collapse: collapse; width: 100%; }
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
 }
 .gate__card--wide { max-width: 660px; }
-.gate__eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--team); font-weight: 800; }
+.gate__eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--team-accent); font-weight: 800; }
 .gate__head { display: flex; align-items: center; gap: 14px; }
 .gate__title { font-size: 30px; letter-spacing: -0.6px; }
 .gate__sub { color: var(--muted); margin: 0; }
@@ -648,7 +749,7 @@ table { border-collapse: collapse; width: 100%; }
 .leaderline__label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); width: 68px; flex-shrink: 0; }
 .leaderline__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leaderline__pos { font-size: 10px; font-weight: 800; color: var(--faint); }
-.leaderline__val { margin-left: auto; font-weight: 800; color: var(--team); }
+.leaderline__val { margin-left: auto; font-weight: 800; color: var(--team-accent); }
 .gate__note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0; }
 .gate__note strong { color: var(--text); }
 

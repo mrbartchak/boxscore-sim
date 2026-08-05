@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
-import { TeamBadge, contrastColor } from './common.jsx';
+import { TeamBadge, contrastColor, accentColor } from './common.jsx';
 import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
@@ -32,7 +32,11 @@ export default function Layout() {
   const team = TEAMS_BY_ID[userTeamId];
 
   return (
-    <div className="app" style={{ '--team': team.color, '--team-text': contrastColor(team.color) }}>
+    <div className="app" style={{
+        '--team': team.color,
+        '--team-accent': accentColor(team.color),
+        '--team-text': contrastColor(team.color),
+      }}>
       <header className="topbar">
         <div className="topbar__team">
           <TeamBadge teamId={userTeamId} size={40} />

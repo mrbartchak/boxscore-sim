@@ -15,7 +15,12 @@ const TOTAL_MINUTES = 200; // 5 players * 40 minutes
 // engine produces between seed lines land on the historical first-round spreads
 // in data/marchmadness.js (a 1 vs 16 is ~23.5, an 8 vs 9 is a pick'em).
 // See scripts/calibrate.mjs — re-run it if you touch roster generation.
-export const MARGIN_PER_RATING = 1.8;
+//
+// It was 1.8 when the league was 184 teams whose prestige bottomed out at 49.
+// Going to the full 365-program Division I added a whole tier below that, which
+// widened the rating gap between a 1 seed and a 16 seed by half again — the
+// ratings didn't get wrong, the conversion did.
+export const MARGIN_PER_RATING = 1.15;
 
 // Game-to-game noise. Real college margins scatter ~11 points around the spread;
 // this single constant is why a 20-point favorite still loses sometimes, and
@@ -39,7 +44,7 @@ const CLASS_BONUS = { FR: -1.2, SO: -0.3, JR: 0.5, SR: 1.2 };
 // real committee is seeding a four-month-old resume for a team whose rotation,
 // health and confidence have all moved since. That gap — not luck in any single
 // game — is what actually produces Cinderella runs and blue-blood flameouts.
-const POSTSEASON_FORM_SD = 0.9;
+const POSTSEASON_FORM_SD = 0.55;
 
 // Playing time is derived from the rotation, not set by hand. Starters share the
 // bulk of the minutes; bench minutes fall off from the 6th man down to the 10th.

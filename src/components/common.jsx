@@ -1,16 +1,57 @@
 import { TEAMS_BY_ID } from '../data/teams.js';
 
-// Choose readable text color for a given background hex.
-export function contrastColor(hex) {
+const rgb = (hex) => {
   const c = hex.replace('#', '');
-  const r = parseInt(c.slice(0, 2), 16);
-  const g = parseInt(c.slice(2, 4), 16);
-  const b = parseInt(c.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? '#111' : '#fff';
+  return [
+    parseInt(c.slice(0, 2), 16),
+    parseInt(c.slice(2, 4), 16),
+    parseInt(c.slice(4, 6), 16),
+  ];
+};
+
+// Perceived brightness, 0-1.
+function luminance(hex) {
+  const [r, g, b] = rgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-// Colored team badge showing the abbreviation.
+// Choose readable text color for a given background hex.
+export function contrastColor(hex) {
+  return luminance(hex) > 0.6 ? '#111' : '#fff';
+}
+
+// A lightened version of a team's color, for anything drawn AS the color rather
+// than filled with it — text, borders, the band across a calendar day.
+//
+// Half of Division I wears navy or black, which on this app's near-black
+// background is invisible: Duke's #001A57 headline reads as a smudge. Rather
+// than override those programs' colors, this keeps the hue and pushes the
+// brightness up until it separates from the background. Fills still use the real
+// color, so a team still looks like itself — only the ink gets brighter.
+export function accentColor(hex) {
+  const [r, g, b] = rgb(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (l >= 0.42) return hex; // already bright enough to read
+
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h *= 60;
+  if (h < 0) h += 360;
+  // Near-greys (black-clad programs) have no hue to preserve, so they land on a
+  // light neutral instead of an invented color.
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  return `hsl(${Math.round(h)} ${Math.round(Math.min(s, 0.85) * 100)}% 64%)`;
+}
+
+// Colored team badge showing the abbreviation. Dark badges get a bright rim in
+// the same hue so they don't dissolve into the page.
 export function TeamBadge({ teamId, size = 34, seed }) {
   const team = TEAMS_BY_ID[teamId];
   if (!team) return <div className="badge badge--empty" style={{ width: size, height: size }} />;
@@ -23,8 +64,9 @@ export function TeamBadge({ teamId, size = 34, seed }) {
         background: team.color,
         color: contrastColor(team.color),
         fontSize: size * 0.3,
+        '--rim': accentColor(team.color),
       }}
-      title={team.name}
+      title={`${team.name} · ${team.conference}`}
     >
       {seed != null && <span className="badge__seed">{seed}</span>}
       {team.abbr}

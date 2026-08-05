@@ -33,7 +33,10 @@ data/  →  engine/  →  store/  →  components/
 - **`components/`** — read the store, call actions, render. No game rules here.
 
 ## File map
-- `data/teams.js` — 17 conferences, 184 teams. Each team: `{id, name, abbr, conference, prestige(0-100), color}`. `prestige` drives roster quality.
+- `data/teams.js` — the 2025-26 Division I membership: 31 conferences, 365 teams,
+  ranging from 7 members (WAC) to 18 (ACC, Big Ten). Each team:
+  `{id, name, abbr, conference, prestige(0-100), color}`. `prestige` drives roster
+  quality and now spans 32-95, a full tier deeper than the old 184-team league.
 - `data/names.js` — first/last name pools.
 - `data/marchmadness.js` — historical NCAA tournament aggregates (1985–2024):
   seed-by-seed first round win rates, typical spreads, champion/Final Four
@@ -45,14 +48,15 @@ data/  →  engine/  →  store/  →  components/
   `proDeclareChance`, `transferOutChance`, `developPlayer`, `recruitClass`,
   `rollCycle`/`nextCycle`. See "The offseason" below.
 - `engine/simulation.js` — `defaultLineup()`, `rotationMinutes()`, `teamStrength()`, `simulateGame()`.
-- `engine/schedule.js` — `buildRegularSeason()` (double round-robin per conf), date helpers, `SEASON_START`.
+- `engine/schedule.js` — `buildRegularSeason(teams)` builds all 5,475 games, date
+  helpers, `SEASON_START`. See "The schedule" below.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
 - `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
 - `store/useGame.js` — see below.
 - `audio/sfx.js` — Web Audio reveal SFX, synthesized (no asset files). One
   fanfare per `overallTier`; sits outside `engine/` because it touches browser
   APIs. Exports `playRevealSfx(tier)`, `playTeamSfx()`, `setMuted`/`isMuted`.
-- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `OffseasonReveal`, `Interstitials` (phase gates), `PlayerCard`, `common.jsx`.
+- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `SelectionSunday` (seed reveal), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `OffseasonReveal`, `Interstitials` (phase gates), `PlayerCard`, `common.jsx`.
 
 ## Key domain concepts
 
@@ -82,9 +86,46 @@ dismissed by an action of the same name. They render in a fixed priority chain i
 | `showConfChamp` | CONF_TOURNEY → NATIONAL | `Interstitials.ConferenceChampBanner` |
 | `showChampBanner` | NATIONAL → DONE | `App.ChampionBanner` |
 
+Selection Sunday is the exception: it isn't a store flag but local state in
+`NationalTournamentView`, because it gates a whole phase's screen rather than
+overlaying it. `SelectionSunday` reveals the field, then the region, then the
+seed; a team that missed the field gets `skipToOffseason()`, which plays the
+bracket out (the league still needs a champion to age from) and lands in the
+offseason.
+
 They work because `_runSim` already stops at every phase boundary. The conference
 champion banner deliberately says nothing about whether the *user* made the field —
 that reveal belongs to Selection Sunday, which is the very next screen.
+
+### The schedule (`buildRegularSeason`)
+Every team plays **exactly 30 games: 12 non-conference, then 18 in league**, at
+about two a week. The unit of construction is a ROUND — a set of games in which
+no team appears twice — and rounds are spread evenly across their window.
+
+- **League play** must produce 18 games out of conferences that range from 7 to 18
+  members, so it stacks whole round-robins (flipping home/away each cycle) and
+  tops up the remainder. How it tops up depends on parity: an **even** league can
+  simply play more rounds of the same rotation, because every team appears in
+  every round. An **odd** one always has somebody sitting, so its remainder is
+  built as a circulant and packed into rounds — which is why a 9- or 11-team
+  league needs a few more dates to fit the same 18 games.
+- **Non-conference** is built as a graph, not a rotation: line the league up in a
+  random order and give each team the six neighbours on each side. That is
+  exactly 12 opponents each with nobody benched. **Do not "simplify" this back
+  into a league-wide round-robin.** With an odd number of teams somebody draws a
+  bye every round, and the teams a rotation benches in consecutive rounds are the
+  same ones it has already matched against each other — so they cannot make the
+  game up among themselves afterwards, and ~20% of seasons have no valid pairing
+  at all. That failure is silent: teams just quietly end up on 29 games.
+- Same-conference pairings from the random order are fixed by **trading partners**
+  between two games, which keeps everyone's count at 12. Every swap is checked
+  against a set of what is already scheduled, including rounds not yet reached.
+- `packIntoRounds` skims maximal sets of games, then folds the tail back into
+  `d + 1` rounds. Both halves matter: skimming keeps rounds evenly sized, and
+  folding stops a straggler from waiting a fortnight between games.
+
+November-December is non-conference, January-February league, and the title game
+lands in March — the old calendar was compressed into February.
 
 ### The simulation loop
 `_stepDay()` advances the calendar ONE day, sims all games on that date across
@@ -139,8 +180,11 @@ sub-65-prestige programs.
 
 ### The offseason (`engine/offseason.js`) — the dynasty loop
 `newSeason()` runs `advanceRoster` for **every** team in the league, then rebuilds
-the schedule. Rosters carry over; only the user's departures/arrivals are kept (in
-`store.offseason`) for `OffseasonReveal` to replay. Three stages:
+the schedule. Rosters carry over; only the user's own offseason is kept, in
+`store.offseason` as `{ report, departures, incoming }`. `report` has one row per
+player who finished last season on the roster, best first — `{ before, after,
+reason }` — which is what `OffseasonReveal` walks down in its first act. Three
+stages:
 
 1. **Departures.** Every senior graduates. Underclassmen declare for the pro
    league on `proDeclareChance` — talent is the gate, prestige the multiplier, so
@@ -152,7 +196,7 @@ the schedule. Rosters carry over; only the user's departures/arrivals are kept (
    rotations top-heavy instead of flattening toward the roster average, and is why
    `potential` headroom now grows with a player's rating (`rollPotential`).
 3. **Recruiting.** `recruitClass` fills *exactly the positions that opened*, which
-   is what keeps every roster two-deep at all five positions forever —
+   keeps every roster two-deep at all five positions forever —
    `defaultLineup` would throw on an empty position. Recruits arrive
    `RECRUIT_DISCOUNT` below the program's level and grow into it. Roughly 10-22%
    of arrivals are portal transfers instead of freshmen (older, better now, less
@@ -174,17 +218,22 @@ That is arguably the more realistic of the two.
 ### Simulation weighting — all calibrated against `data/marchmadness.js`
 `simulateGame` is `ratingGap * MARGIN_PER_RATING + home court`, scattered by
 `MARGIN_SD`. Do not change these blind — `npm run calibrate` exists to check them:
-- `MARGIN_PER_RATING` (1.8) — rating → points. Set so the strength gaps between
+- `MARGIN_PER_RATING` (1.15) — rating → points. Set so the strength gaps between
   seed lines reproduce real first-round spreads (1v16 ≈ 23.5, 8v9 ≈ pick'em).
+  It was 1.8 for the old 184-team league; going to all 365 programs added a tier
+  below the old floor and widened the 1-vs-16 rating gap by half again. The
+  ratings didn't become wrong, the conversion did — this is the knob for it.
 - `MARGIN_SD` (11.0) — real CBB margins scatter ~11 points around the spread.
   Lowering this is the fastest way to make the bracket unrealistically chalky.
 - `HOME_COURT_POINTS` — added in POINTS after the rating conversion, not before.
 - `CLASS_BONUS` — veteran rotations outperform raw talent, the best-documented
   reason veteran mid-majors upset freshman-led blue-bloods.
-- `POSTSEASON_FORM_SD` — re-rolled per team at each postseason phase, **always
-  after the field is seeded**. Our seeding is near-perfect (true strength over 30
-  games) where the real committee seeds a four-month-old resume; this models that
-  gap, and without it 1 seeds win ~78% of titles instead of the historical ~63%.
+- `POSTSEASON_FORM_SD` (0.55) — re-rolled per team at each postseason phase,
+  **always after the field is seeded**. It is in RATING points, so compressing
+  `MARGIN_PER_RATING` made it relatively stronger and it came down to match.
+  Our seeding is near-perfect (true strength over 30 games) where the real
+  committee seeds a four-month-old resume; this models that gap, and without it
+  the 1 seeds run away with the tournament.
 
 Known residual: 5v12 and 8v9 come out ~5-7 points chalkier than history, because
 the real committee under-seeds mid-major champions and the 8/9 line is a coin
@@ -211,10 +260,9 @@ reproduce that. Everything else lands within ~4 points.
 carry `region` (0–3); FF games carry `ffRegions`. The rules it implements:
 - **Auto-bids first.** Every conference tournament champion is in regardless of
   resume (which is how a sub-.500 team reaches the field); the rest are at-large.
-- **Seeding is opponent-adjusted.** `powerRating` runs on adjusted scoring margin
-  — since the regular season is played entirely inside the conference, a team's
-  SOS simply *is* its conference's strength, and the adjustment is exact. Raw
-  margin is the trap: it puts one-bid-league bullies on the 4 line.
+- **Seeding is opponent-adjusted.** `powerRating` runs on adjusted scoring margin,
+  measured from the schedule a team actually played (`oppStrengthSum`). Raw margin
+  is the trap: it puts one-bid-league bullies on the 4 line.
 - **S-curve.** `assignRegions` deals each seed line across regions in alternating
   direction, so the strongest 1 seed draws the weakest 2 and the weakest 16.
 - **Conference separation.** `separateConferences` hill-climbs on swaps *within a
@@ -228,7 +276,7 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
 - JSX (not TS). Plain CSS in `src/index.css` with CSS custom properties; the
   user's team color flows in as `--team` on the root container for theming.
 - Immutable-but-scoped state updates: `_stepDay` clones only the teams/games
-  touched that day (keeps ~184 teams cheap to re-render).
+  touched that day (keeps 365 teams cheap to re-render).
 - Dates are ISO strings (`"2025-11-04"`) — serializable for a future DB.
 - Comments explain *why*, matching existing density. Keep it economical.
 
@@ -241,11 +289,6 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
 - **Recruiting is not a decision** — `recruitClass` hands you a class sized to your
   departures at your prestige level. There is no board, no pitch, no competition.
 - Drag-and-drop uses native HTML5 DnD → **mouse only, not touch**.
-- Season calendar is date-compressed (title game lands ~late Feb, not April).
-- When adding a conference, keep it **≥8 teams** — `seedConferenceTournaments`
-  builds an 8-team bracket and assumes at least 8.
-- Every regular-season game is **intra-conference** (double round-robin), so a
-  team's record is only meaningful relative to its league. Several parts of the
-  engine depend on this; adding non-conference games means reworking the SOS
-  term in `powerRating` into a real opponent-average.
-- Conference tournaments are 8 teams for every conference regardless of size.
+- Conference tournaments are 8 teams for every conference regardless of size —
+  a 7-team league seeds all of its members and gives the 1 seed a bye, but an
+  18-team league still leaves half its membership home.
