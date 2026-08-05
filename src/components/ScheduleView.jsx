@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate, addDays } from '../engine/schedule.js';
+import { wearsStar } from '../engine/players.js';
 import { TeamBadge, TeamName } from './common.jsx';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -154,20 +155,27 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
           const isSelected = iso === selectedDate;
           const isDetail = iso === detailDate;
           const day = Number(iso.slice(8));
+          // Paint the whole day in the opponent's colors, so a glance down the
+          // month reads as "who am I playing" without any squinting.
+          const opp = g ? TEAMS_BY_ID[g.homeId === userTeamId ? g.awayId : g.homeId] : null;
+          const won = g?.played && g.result.winnerId === userTeamId;
           return (
             <button
               key={i}
+              style={opp ? { '--opp': opp.color } : undefined}
               className={[
                 'cal-cell',
                 isCurrent && 'is-current',
                 isSelected && 'is-selected',
                 isDetail && !isCurrent && 'is-detail',
                 g && 'has-game',
+                opp && 'has-opp',
+                g?.played && (won ? 'is-win' : 'is-loss'),
               ].filter(Boolean).join(' ')}
               onClick={() => onSelect(iso, !!g && !g.played)}
             >
               <span className="cal-cell__day">{day}</span>
-              {g && <GameChip game={g} userTeamId={userTeamId} />}
+              {g && <GameChip game={g} userTeamId={userTeamId} opp={opp} />}
             </button>
           );
         })}
@@ -176,28 +184,27 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, selectedD
   );
 }
 
-function GameChip({ game, userTeamId }) {
+function GameChip({ game, userTeamId, opp }) {
   const isHome = game.homeId === userTeamId;
-  const oppId = isHome ? game.awayId : game.homeId;
   const prefix = game.neutral ? 'vs' : isHome ? 'vs' : '@';
+  const r = game.result;
+  const won = game.played && r.winnerId === userTeamId;
 
-  if (game.played) {
-    const r = game.result;
-    const my = isHome ? r.homePts : r.awayPts;
-    const their = isHome ? r.awayPts : r.homePts;
-    const won = r.winnerId === userTeamId;
-    return (
-      <span className={`chip ${won ? 'chip--w' : 'chip--l'}`}>
-        <span className="chip__wl">{won ? 'W' : 'L'}</span>
-        <span className="chip__score">{my}-{their}</span>
-        {oppId && <TeamBadge teamId={oppId} size={18} />}
-      </span>
-    );
-  }
   return (
-    <span className="chip chip--upcoming">
-      <span className="chip__prefix">{prefix}</span>
-      {oppId ? <TeamBadge teamId={oppId} size={18} /> : <span className="muted">TBD</span>}
+    <span className="cal-cell__game">
+      <span className="cal-cell__opp">
+        <span className="cal-cell__prefix">{prefix}</span>
+        <span className="cal-cell__abbr">{opp ? opp.abbr : 'TBD'}</span>
+      </span>
+      {opp && <span className="cal-cell__team">{opp.name}</span>}
+      {game.played && (
+        <span className={`chip ${won ? 'chip--w' : 'chip--l'}`}>
+          <span className="chip__wl">{won ? 'W' : 'L'}</span>
+          <span className="chip__score">
+            {isHome ? r.homePts : r.awayPts}-{isHome ? r.awayPts : r.homePts}
+          </span>
+        </span>
+      )}
     </span>
   );
 }
@@ -281,7 +288,9 @@ function BoxScore({ game, userTeamId }) {
             const p = byId[b.playerId];
             return (
               <tr key={b.playerId}>
-                <td className="statgrid__name">{p?.name} {p?.isStar && <span className="star">★</span>}</td>
+                <td className="statgrid__name">
+                  {p?.name} {p && wearsStar(p, ts.rotation.starId) && <span className="star">★</span>}
+                </td>
                 <td>{b.min}</td>
                 <td className="strong">{b.pts}</td>
                 <td>{b.ast}</td>

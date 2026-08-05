@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { TEAMS, CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
 import { generateRoster } from '../engine/players.js';
+import { advanceRoster, rollCycle } from '../engine/offseason.js';
 import { defaultLineup, simulateGame, rollPostseasonForm } from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
 import {
@@ -15,12 +16,13 @@ const SIM_SPEED_MS = 80;
 // advances, then simulates the new day) actually steps into every game date.
 const PRESEASON = addDays(SEASON_START, -1);
 
-function freshTeamState(teamId) {
-  const team = TEAMS_BY_ID[teamId];
-  const players = generateRoster(team);
+// A team's state at the top of a season. `players` is passed in so the same
+// shape serves a brand-new program and one carried over from last year.
+function newTeamState(teamId, players, cycle) {
   return {
     teamId,
     players,
+    cycle, // program's multi-year talent swing; carried across seasons
     rotation: defaultLineup(players),
     record: { w: 0, l: 0 },
     confRecord: { w: 0, l: 0 },
@@ -78,7 +80,29 @@ const BLANK_SEASON = {
   showReveal: false,
   showChampBanner: false,
   revealRandom: false,
+  // Interstitials that gate each phase change, plus the offseason the user is
+  // about to live through (departures + arrivals for their program only).
+  showSeasonSummary: false,
+  showConfChamp: false,
+  showOffseason: false,
+  offseason: null,
 };
+
+// Build the league's schedule + date index for a fresh season.
+function buildSchedule() {
+  const teamIdsByConf = {};
+  CONFERENCES.forEach((c) => (teamIdsByConf[c] = []));
+  TEAMS.forEach((t) => teamIdsByConf[t.conference].push(t.id));
+
+  const { games, lastRegularDate } = buildRegularSeason(teamIdsByConf);
+  const gamesById = {};
+  const gameIdsByDate = {};
+  games.forEach((g) => {
+    gamesById[g.id] = g;
+    (gameIdsByDate[g.date] ||= []).push(g.id);
+  });
+  return { games: gamesById, gameIdsByDate, lastRegularDate };
+}
 
 export const useGame = create((set, get) => ({
   ...BLANK_SEASON,
@@ -90,31 +114,24 @@ export const useGame = create((set, get) => ({
   setView: (v) => set({ activeView: v }),
   dismissReveal: () => set({ showReveal: false }),
   dismissChampBanner: () => set({ showChampBanner: false }),
+  dismissSeasonSummary: () => set({ showSeasonSummary: false }),
+  dismissConfChamp: () => set({ showConfChamp: false }),
+  dismissOffseason: () => set({ showOffseason: false }),
 
+  // Start a dynasty: every program in the league gets a generated roster.
   selectTeam: (teamId, { random = false } = {}) => {
     const teamStates = {};
-    const teamIdsByConf = {};
-    CONFERENCES.forEach((c) => (teamIdsByConf[c] = []));
     TEAMS.forEach((t) => {
-      teamStates[t.id] = freshTeamState(t.id);
-      teamIdsByConf[t.conference].push(t.id);
-    });
-
-    const { games, lastRegularDate } = buildRegularSeason(teamIdsByConf);
-    const gamesById = {};
-    const gameIdsByDate = {};
-    games.forEach((g) => {
-      gamesById[g.id] = g;
-      (gameIdsByDate[g.date] ||= []).push(g.id);
+      const cycle = rollCycle();
+      teamStates[t.id] = newTeamState(t.id, generateRoster(t, cycle), cycle);
     });
 
     set({
       ...BLANK_SEASON,
+      ...buildSchedule(),
       userTeamId: teamId,
       teamStates,
-      games: gamesById,
-      gameIdsByDate,
-      lastRegularDate,
+      seasonNumber: 1,
       phase: 'REGULAR',
       showReveal: true,
       revealRandom: random,
@@ -122,12 +139,33 @@ export const useGame = create((set, get) => ({
     });
   },
 
-  // Same program, brand-new season: fresh rosters league-wide and a new schedule.
+  // Roll the whole league forward one year: seniors graduate, pro prospects
+  // leave, everyone else develops, and recruiting classes fill the gaps. The
+  // user keeps the team they built minus whoever they lost — this is the loop.
   newSeason: () => {
-    const { userTeamId, seasonNumber } = get();
+    const { userTeamId, seasonNumber, teamStates } = get();
     if (!userTeamId) return;
-    get().selectTeam(userTeamId);
-    set({ seasonNumber: seasonNumber + 1 });
+
+    const nextStates = {};
+    let offseason = null;
+    Object.values(teamStates).forEach((ts) => {
+      const team = TEAMS_BY_ID[ts.teamId];
+      const { players, departures, incoming, cycle } = advanceRoster(ts, team);
+      nextStates[ts.teamId] = newTeamState(ts.teamId, players, cycle);
+      if (ts.teamId === userTeamId) offseason = { departures, incoming };
+    });
+
+    set({
+      ...BLANK_SEASON,
+      ...buildSchedule(),
+      userTeamId,
+      teamStates: nextStates,
+      seasonNumber: seasonNumber + 1,
+      phase: 'REGULAR',
+      showOffseason: true,
+      offseason,
+      version: get().version + 1,
+    });
   },
 
   // Drop the current save entirely and go back to team selection.
@@ -135,9 +173,6 @@ export const useGame = create((set, get) => ({
     set({ ...BLANK_SEASON, userTeamId: null, seasonNumber: 1, version: get().version + 1 }),
 
   // ---- Rotation management (user team) ----
-  setStar: (playerId) =>
-    set((s) => setUserRotation(s, { ...s.teamStates[s.userTeamId].rotation, starId: playerId })),
-
   // Swap the players occupying two lineup slots (starters or bench).
   swapLineup: (fromSlot, toSlot) =>
     set((s) => {
@@ -263,6 +298,7 @@ export const useGame = create((set, get) => ({
         patch.gameIdsByDate = appendGames(games, s.gameIdsByDate, tGames);
         patch.phase = 'CONF_TOURNEY';
         patch.lastConfDate = lastDate;
+        patch.showSeasonSummary = true; // gate the postseason behind the recap
         // Seeds are locked in above; now find out who is actually peaking.
         patch.teamStates = rollPostseasonForm(teamStates);
       } else if (s.phase === 'CONF_TOURNEY' && allPlayed('CONF_TOURNEY')) {
@@ -280,6 +316,7 @@ export const useGame = create((set, get) => ({
         patch.phase = 'NATIONAL';
         patch.champions = champions;
         patch.nationalField = field;
+        patch.showConfChamp = true; // who cut down the nets in your league
         // Re-roll AFTER selection and seeding — the committee never gets to see
         // who is about to get hot.
         patch.teamStates = rollPostseasonForm(teamStates);

@@ -96,7 +96,7 @@ export default function RosterReveal() {
                 const tier = overallTier(p.overall);
                 return (
                   <div key={p.id} className={`reveal__cardwrap reveal-anim--${tier}`}>
-                    <PlayerCard player={p} layout="tile" stats={careerAverages(p)} isStar={p.id === ts.rotation.starId} />
+                    <PlayerCard player={p} layout="tile" stats={careerAverages(p)} starId={ts.rotation.starId} />
                   </div>
                 );
               })}

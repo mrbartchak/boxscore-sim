@@ -1,44 +1,32 @@
-import { overallTier, CLASS_LABEL } from '../engine/players.js';
+import { overallTier, wearsStar, CLASS_LABEL } from '../engine/players.js';
 
 // Player card whose color mirrors the overall tier.
 // `stats` is a {ppg,apg,rpg} object, or null to show dashes.
+// `starId` is the team's featured player; the ★ also goes to any diamond.
 // layout: 'wide' (reveal) or 'tile' (roster grid).
 export default function PlayerCard({
   player,
   stats,
-  isStar,
-  onToggleStar,
+  starId,
   rootProps = {},
   className = '',
   layout = 'wide',
 }) {
   const tier = overallTier(player.overall);
   const d = (v) => (stats ? v : '—');
-
-  const star = onToggleStar && (
-    <button
-      className={`startoggle ${isStar ? 'on' : ''}`}
-      onClick={onToggleStar}
-      title={isStar ? 'Star player' : 'Make star player (usage boost)'}
-      draggable={false}
-    >
-      ★
-    </button>
-  );
+  const star = wearsStar(player, starId) && <span className="star pcard__star">★</span>;
+  const pos = <span className="pcard__pos">{player.position}</span>;
 
   if (layout === 'tile') {
     return (
       <div className={`pcard pcard--tile pcard--${tier} ${className}`} {...rootProps}>
         <div className="pcard__toprow">
           <span className="pcard__ovr pcard__ovr--sm">{player.overall}</span>
-          <span className="pos">{player.position}</span>
+          {pos}
           {star}
         </div>
-        <div className="pcard__name">
-          {player.name}
-          {isStar && <span className="star pcard__star">★</span>}
-        </div>
-        <div className="pcard__meta"><span title={CLASS_LABEL[player.class]}>{CLASS_LABEL[player.class]}</span></div>
+        <div className="pcard__name">{player.name}</div>
+        <div className="pcard__meta">{CLASS_LABEL[player.class]}</div>
         <div className="pcard__stats pcard__stats--tile">
           <Stat label="PPG" value={d(stats?.ppg)} strong />
           <Stat label="APG" value={d(stats?.apg)} />
@@ -54,12 +42,11 @@ export default function PlayerCard({
       <div className="pcard__main">
         <div className="pcard__name">
           {player.name}
-          {isStar && <span className="star pcard__star">★</span>}
+          {star}
         </div>
         <div className="pcard__meta">
-          <span className="pcard__pos">{player.position}</span>
-          <span>·</span>
-          <span title={CLASS_LABEL[player.class]}>{player.class}</span>
+          {pos}
+          <span>{CLASS_LABEL[player.class]}</span>
         </div>
       </div>
       <div className="pcard__stats">

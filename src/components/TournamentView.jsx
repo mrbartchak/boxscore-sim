@@ -1,16 +1,10 @@
 import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
-import { rankTeams, conferenceStandings } from '../engine/rankings.js';
-import { seasonAverages } from '../engine/players.js';
+import { conferenceStandings } from '../engine/rankings.js';
 import { NATIONAL_ROUND_NAMES, CONF_ROUND_NAMES, REGIONS } from '../engine/tournament.js';
-import { TeamBadge, TeamName } from './common.jsx';
-
-const ORD = (n) => {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-};
+import { TeamBadge } from './common.jsx';
+import { ORD } from './Interstitials.jsx';
 
 // ---------- Simulation controls shared by both tournament screens ----------
 function TourneyControls({ complete }) {
@@ -34,38 +28,56 @@ function TourneyControls({ complete }) {
   );
 }
 
-// ---------- Season overview shown before the conference tournament ----------
-function SeasonOverview() {
-  const teamStates = useGame((s) => s.teamStates);
-  const userTeamId = useGame((s) => s.userTeamId);
-  const ts = teamStates[userTeamId];
-  const conf = TEAMS_BY_ID[userTeamId].conference;
+// Where the user stands in a bracket, from their own games. Returns the line
+// the status bar prints plus a state class — the thing that was hardest to see.
+function userStatus(games, userTeamId, roundNames) {
+  const mine = games
+    .filter((g) => g.homeId === userTeamId || g.awayId === userTeamId)
+    .sort((a, b) => a.round - b.round);
+  if (!mine.length) return null;
 
-  const confFinish = conferenceStandings(teamStates, conf).findIndex((x) => x.teamId === userTeamId) + 1;
-  const natRank = rankTeams(teamStates).find((x) => x.ts.teamId === userTeamId)?.rank;
-  const scorer = [...ts.players]
-    .map((p) => ({ p, ppg: seasonAverages(p)?.ppg ?? 0 }))
-    .sort((a, b) => b.ppg - a.ppg)[0];
+  const played = mine.filter((g) => g.played);
+  const lost = played.find((g) => g.result.winnerId !== userTeamId);
+  const next = mine.find((g) => !g.played);
+  const wins = played.length - (lost ? 1 : 0);
 
-  return (
-    <section className="overview">
-      <h2 className="overview__title">Regular Season Complete</h2>
-      <div className="overview__stats">
-        <SummaryStat label="Record" value={`${ts.record.w}-${ts.record.l}`} />
-        <SummaryStat label={`${conf} Finish`} value={ORD(confFinish)} sub={`${ts.confRecord.w}-${ts.confRecord.l}`} />
-        <SummaryStat label="National Rank" value={`#${natRank}`} />
-        <SummaryStat label="Leading Scorer" value={scorer.p.name.split(' ').slice(-1)[0]} sub={`${scorer.ppg} PPG`} />
-      </div>
-    </section>
-  );
+  if (lost) {
+    const oppId = lost.homeId === userTeamId ? lost.awayId : lost.homeId;
+    const my = lost.homeId === userTeamId ? lost.result.homePts : lost.result.awayPts;
+    const their = lost.homeId === userTeamId ? lost.result.awayPts : lost.result.homePts;
+    return {
+      state: 'out',
+      headline: `Eliminated in the ${roundNames[lost.round]}`,
+      detail: `Lost ${my}–${their} to ${TEAMS_BY_ID[oppId].name}`,
+      wins,
+    };
+  }
+  if (next) {
+    const oppId = next.homeId === userTeamId ? next.awayId : next.homeId;
+    return {
+      state: 'alive',
+      headline: `Up next · ${roundNames[next.round]}`,
+      detail: oppId ? `vs ${TEAMS_BY_ID[oppId].name}` : 'Opponent to be decided',
+      wins,
+    };
+  }
+  return {
+    state: 'won',
+    headline: 'Champions 🏆',
+    detail: `${wins}-0 through the bracket`,
+    wins,
+  };
 }
 
-function SummaryStat({ label, value, sub }) {
+function StatusBar({ status, children }) {
+  if (!status) return null;
   return (
-    <div className="sumstat">
-      <div className="sumstat__value">{value}</div>
-      <div className="sumstat__label">{label}</div>
-      {sub && <div className="sumstat__hint">{sub}</div>}
+    <div className={`tstatus tstatus--${status.state}`}>
+      <div className="tstatus__main">
+        <div className="tstatus__headline">{status.headline}</div>
+        <div className="tstatus__detail">{status.detail}</div>
+      </div>
+      {children}
     </div>
   );
 }
@@ -73,21 +85,42 @@ function SummaryStat({ label, value, sub }) {
 // ---------- Conference tournament ----------
 export function ConferenceTournamentView() {
   const games = useGame((s) => s.games);
+  const teamStates = useGame((s) => s.teamStates);
   const userTeamId = useGame((s) => s.userTeamId);
   const conf = TEAMS_BY_ID[userTeamId].conference;
 
-  const confGames = Object.values(games).filter((g) => g.phase === 'CONF_TOURNEY' && g.conference === conf);
+  const confGames = Object.values(games).filter(
+    (g) => g.phase === 'CONF_TOURNEY' && g.conference === conf
+  );
   const rounds = [];
   confGames.forEach((g) => (rounds[g.round] ||= []).push(g));
   const complete = confGames.length > 0 && confGames.every((g) => g.played);
 
+  const ts = teamStates[userTeamId];
+  const confFinish = conferenceStandings(teamStates, conf).findIndex((x) => x.teamId === userTeamId) + 1;
+  const status = userStatus(confGames, userTeamId, CONF_ROUND_NAMES);
+
   return (
     <div className="tourney">
-      <SeasonOverview />
       <div className="tourney__bar">
-        <h2 className="tourney__title">{conf} Tournament</h2>
+        <div>
+          <h2 className="tourney__title">{conf} Tournament</h2>
+          <div className="tourney__sub">
+            {ts.record.w}-{ts.record.l} overall · {ORD(confFinish)} in the {conf}
+            {confFinish <= 8 && <> · No. {confFinish} seed</>}
+          </div>
+        </div>
         <TourneyControls complete={complete} />
       </div>
+
+      <StatusBar status={status} />
+
+      {!status && (
+        <p className="muted">
+          {ORD(confFinish)} place missed the eight-team field — you're watching this one.
+        </p>
+      )}
+
       <div className="bracket">
         {rounds.map((round, r) => (
           <div key={r} className="bracket__round">
@@ -116,8 +149,11 @@ export function NationalTournamentView() {
   const firstGame = nationalGames.find(
     (g) => g.round === 0 && (g.homeId === userTeamId || g.awayId === userTeamId)
   );
-  const region = firstGame ? REGIONS[firstGame.region] : null;
-  const regionSeed = firstGame ? (firstGame.homeId === userTeamId ? firstGame.seedHome : firstGame.seedAway) : null;
+  const userRegion = firstGame ? firstGame.region : null;
+  const region = firstGame ? REGIONS[userRegion] : null;
+  const regionSeed = firstGame
+    ? (firstGame.homeId === userTeamId ? firstGame.seedHome : firstGame.seedAway)
+    : null;
 
   if (!entered && !started) {
     return (
@@ -151,18 +187,40 @@ export function NationalTournamentView() {
     );
   }
 
+  const status = madeIt ? userStatus(nationalGames, userTeamId, NATIONAL_ROUND_NAMES) : null;
+
   return (
     <div className="tourney">
       <div className="tourney__bar">
         <h2 className="tourney__title">National Championship</h2>
         <TourneyControls complete={phase === 'DONE'} />
       </div>
-      <NationalBracket games={nationalGames} userTeamId={userTeamId} />
+
+      {status ? (
+        <StatusBar status={status}>
+          <div className="tstatus__seed">
+            <TeamBadge teamId={userTeamId} size={34} seed={regionSeed} />
+            <div>
+              <div className="tstatus__seedline">No. {regionSeed} seed</div>
+              <div className="tstatus__detail">{region} Region</div>
+            </div>
+          </div>
+        </StatusBar>
+      ) : (
+        <div className="tstatus tstatus--out">
+          <div className="tstatus__main">
+            <div className="tstatus__headline">Watching from home</div>
+            <div className="tstatus__detail">Your team didn't make the field this year.</div>
+          </div>
+        </div>
+      )}
+
+      <NationalBracket games={nationalGames} userTeamId={userTeamId} userRegion={userRegion} />
     </div>
   );
 }
 
-function NationalBracket({ games, userTeamId }) {
+function NationalBracket({ games, userTeamId, userRegion }) {
   const byRegion = [[], [], [], []];
   let ffA, ffB, champ;
   games.forEach((g) => {
@@ -172,11 +230,21 @@ function NationalBracket({ games, userTeamId }) {
     else ffB = g;
   });
 
+  const block = (r, mirror) => (
+    <RegionBlock
+      games={byRegion[r]}
+      label={REGIONS[r]}
+      userTeamId={userTeamId}
+      isUserRegion={r === userRegion}
+      mirror={mirror}
+    />
+  );
+
   return (
     <div className="natbracket">
       <div className="natbracket__side">
-        <RegionBlock games={byRegion[0]} label={REGIONS[0]} userTeamId={userTeamId} />
-        <RegionBlock games={byRegion[1]} label={REGIONS[1]} userTeamId={userTeamId} />
+        {block(0, false)}
+        {block(1, false)}
       </div>
 
       <div className="natbracket__center">
@@ -194,25 +262,31 @@ function NationalBracket({ games, userTeamId }) {
       </div>
 
       <div className="natbracket__side">
-        <RegionBlock games={byRegion[2]} label={REGIONS[2]} userTeamId={userTeamId} mirror />
-        <RegionBlock games={byRegion[3]} label={REGIONS[3]} userTeamId={userTeamId} mirror />
+        {block(2, true)}
+        {block(3, true)}
       </div>
     </div>
   );
 }
 
-function RegionBlock({ games, label, userTeamId, mirror }) {
+const REGION_ROUNDS = ['R64', 'R32', 'S16', 'E8'];
+
+function RegionBlock({ games, label, userTeamId, isUserRegion, mirror }) {
   const rounds = [];
   games.forEach((g) => (rounds[g.round] ||= []).push(g));
   const cols = rounds.map((round, r) => (
     <div key={r} className="bracket__round bracket__round--tight">
+      <div className="bracket__roundname bracket__roundname--mini">{REGION_ROUNDS[r]}</div>
       {round.map((g) => <Matchup key={g.id} game={g} userTeamId={userTeamId} compact />)}
     </div>
   ));
 
   return (
-    <div className={`region ${mirror ? 'region--mirror' : ''}`}>
-      <div className="region__label">{label}</div>
+    <div className={`region ${mirror ? 'region--mirror' : ''} ${isUserRegion ? 'region--user' : ''}`}>
+      <div className="region__label">
+        {label}
+        {isUserRegion && <span className="region__you">Your region</span>}
+      </div>
       <div className="region__cols">{mirror ? [...cols].reverse() : cols}</div>
     </div>
   );
@@ -222,20 +296,54 @@ function RegionBlock({ games, label, userTeamId, mirror }) {
 export function Matchup({ game, userTeamId, compact, big }) {
   const homeWon = game.played && game.result.winnerId === game.homeId;
   const awayWon = game.played && game.result.winnerId === game.awayId;
+  const isUsers = game.homeId === userTeamId || game.awayId === userTeamId;
+  // The user's own games get an outcome frame: green if they advanced, red if
+  // this is where the run ended, and a live marker if it hasn't been played.
+  const outcome = !isUsers
+    ? ''
+    : !game.played
+      ? 'matchup--next'
+      : game.result.winnerId === userTeamId
+        ? 'matchup--won'
+        : 'matchup--lost';
+
   return (
-    <div className={`matchup ${compact ? 'matchup--compact' : ''} ${big ? 'matchup--big' : ''}`}>
-      <BracketRow teamId={game.homeId} seed={game.seedHome} pts={game.played ? game.result.homePts : null} won={homeWon} user={game.homeId === userTeamId} />
-      <BracketRow teamId={game.awayId} seed={game.seedAway} pts={game.played ? game.result.awayPts : null} won={awayWon} user={game.awayId === userTeamId} />
+    <div
+      className={[
+        'matchup',
+        compact && 'matchup--compact',
+        big && 'matchup--big',
+        isUsers && 'matchup--mine',
+        outcome,
+      ].filter(Boolean).join(' ')}
+    >
+      <BracketRow
+        teamId={game.homeId} seed={game.seedHome} played={game.played}
+        pts={game.played ? game.result.homePts : null} won={homeWon}
+        user={game.homeId === userTeamId}
+      />
+      <BracketRow
+        teamId={game.awayId} seed={game.seedAway} played={game.played}
+        pts={game.played ? game.result.awayPts : null} won={awayWon}
+        user={game.awayId === userTeamId}
+      />
     </div>
   );
 }
 
-function BracketRow({ teamId, seed, pts, won, user }) {
+function BracketRow({ teamId, seed, pts, won, played, user }) {
   return (
-    <div className={`brow ${won ? 'brow--won' : ''} ${user ? 'brow--user' : ''}`}>
+    <div
+      className={[
+        'brow',
+        played && (won ? 'brow--won' : 'brow--lost'),
+        user && 'brow--user',
+      ].filter(Boolean).join(' ')}
+    >
       <span className="brow__seed">{seed ?? ''}</span>
       {teamId ? <TeamBadge teamId={teamId} size={18} /> : <span className="badge badge--empty" />}
       <span className="brow__name">{teamId ? TEAMS_BY_ID[teamId].abbr : 'TBD'}</span>
+      {played && <span className={`brow__wl ${won ? 'is-w' : 'is-l'}`}>{won ? 'W' : 'L'}</span>}
       <span className="brow__pts">{pts ?? ''}</span>
     </div>
   );

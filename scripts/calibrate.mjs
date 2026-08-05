@@ -218,5 +218,68 @@ function tournamentReport() {
   );
 }
 
+// --------------------------------------------------------------------- dynasty
+// The offseason is a second, independent path into roster state: instead of
+// generating a league it ages one. If the two disagree, the game drifts — a few
+// dozen seasons in, the league is either all 90s or all 50s, and every seed line
+// converges because team strength SPREAD is what MARGIN_PER_RATING turns into
+// point spreads. So: build a league, run a decade of carry-over seasons, and
+// check the shape against the freshly generated one it started as.
+function dynastyReport(runs = 2, seasons = 10) {
+  const duke = TEAMS.find((t) => t.name === 'Duke');
+  const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+  const sd = (a) => Math.sqrt(avg(a.map((x) => (x - avg(a)) ** 2)));
+
+  const snapshot = () => {
+    const st = g();
+    const rows = TEAMS.map((t) => ({ p: t.prestige, s: teamStrength(st.teamStates[t.id]) }));
+    const band = (lo, hi) => avg(rows.filter((r) => r.p >= lo && r.p < hi).map((r) => r.s));
+    const ts = st.teamStates[duke.id];
+    const by = Object.fromEntries(ts.players.map((p) => [p.id, p]));
+    let elite = 0;
+    Object.values(st.teamStates).forEach((t) =>
+      t.players.forEach((p) => { if (p.overall >= 90) elite++; })
+    );
+    return {
+      mean: avg(rows.map((r) => r.s)),
+      sd: sd(rows.map((r) => r.s)),
+      blue: band(90, 101),
+      high: band(70, 90),
+      small: band(50, 70),
+      dukeStart: avg(ts.rotation.starters.map((x) => by[x.id].overall)),
+      dukeBench: avg(ts.rotation.bench.map((id) => by[id].overall)),
+      elite,
+    };
+  };
+
+  const fresh = [];
+  const aged = [];
+  for (let run = 0; run < runs; run++) {
+    g().selectTeam(duke.id);
+    fresh.push(snapshot());
+    for (let s = 0; s < seasons; s++) {
+      let guard = 0;
+      while (g().phase !== 'DONE' && guard++ < 400) g()._stepDay();
+      g().newSeason();
+    }
+    aged.push(snapshot());
+  }
+
+  const keys = ['mean', 'sd', 'blue', 'high', 'small', 'dukeStart', 'dukeBench', 'elite'];
+  const row = (label, rows) =>
+    label.padEnd(12) + keys.map((k) => avg(rows.map((r) => r[k])).toFixed(1).padStart(10)).join('');
+  console.log(`\n=== DYNASTY DRIFT (${runs} leagues, ${seasons} carried-over seasons each) ===`);
+  console.log('            ' + keys.map((k) => k.padStart(10)).join(''));
+  console.log(row('fresh', fresh));
+  console.log(row(`+${seasons} seasons`, aged));
+  console.log(
+    '\nblue/high/small = mean team strength by prestige band (90+, 70-89, 50-69).\n' +
+      'These two rows must stay close. `mean` drifting means RECRUIT_DISCOUNT is off;\n' +
+      '`sd` collapsing means the program cycle is too weak to survive four classes\n' +
+      'averaging out; `elite` is the league\'s supply of 90+ players.'
+  );
+}
+
 rosterReport();
 tournamentReport();
+dynastyReport();
