@@ -142,6 +142,24 @@ export function playRevealSfx(tier) {
   (TIER_SFX[tier] || TIER_SFX.base)(c.currentTime + 0.01);
 }
 
+// The sting when a simmed game's score lands. A win climbs a major arpeggio
+// with a shimmer over the top; a loss is two sinking tones and no sparkle —
+// short and flat, because it plays as often as the win does and shouldn't
+// become something you learn to dread hearing.
+export function playResultSfx(won) {
+  const c = audio();
+  if (!c) return;
+  const t = c.currentTime + 0.01;
+  if (won) {
+    thump(t, 0.2);
+    [12, 16, 19, 24].forEach((n, i) => tone(t + i * 0.055, n, 0.32, { gain: 0.15 }));
+    sparkle(t + 0.14, 0.26, 0.06);
+  } else {
+    tone(t, 8, 0.26, { wave: 'sine', gain: 0.13, glide: -3 });
+    tone(t + 0.11, 3, 0.34, { wave: 'sine', gain: 0.11, glide: -3 });
+  }
+}
+
 // Short riser used when the program name lands.
 export function playTeamSfx() {
   const c = audio();

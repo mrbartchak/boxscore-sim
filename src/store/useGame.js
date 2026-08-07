@@ -15,7 +15,13 @@ import {
   buildNationalBracket,
 } from '../engine/tournament.js';
 
-const SIM_SPEED_MS = 80;
+const SIM_SPEED_MS = { slow: 220, normal: 80, fast: 25 };
+
+// A user game day, when "full sim games" is on: the calendar chip spins its
+// digits for REVEAL_ROLL_MS, lands on the final, then holds on the W/L flash.
+// The view animates inside this window, so the two constants travel together.
+export const REVEAL_ROLL_MS = 170;
+export const REVEAL_MS = 500;
 
 // Start the cursor one day before the first game so the day-by-day loop (which
 // advances, then simulates the new day) actually steps into every game date.
@@ -96,6 +102,7 @@ const BLANK_SEASON = {
   showConfChamp: false,
   showOffseason: false,
   offseason: null,
+  reveal: null, // the user game currently rolling its score on the calendar
 };
 
 // Build the league's schedule + date index for a fresh season.
@@ -116,6 +123,12 @@ export const useGame = create((set, get) => ({
   seasonStart: SEASON_START,
   seasonNumber: 1,
   version: 0,
+
+  // Settings live outside BLANK_SEASON — they belong to the player, not the season.
+  simSpeed: 'normal', // slow | normal | fast
+  fullSim: true, // play out your own games with a score roll instead of blowing past them
+  setSimSpeed: (simSpeed) => set({ simSpeed }),
+  setFullSim: (fullSim) => set({ fullSim }),
 
   setView: (v) => set({ activeView: v }),
   dismissReveal: () => set({ showReveal: false }),
@@ -212,6 +225,33 @@ export const useGame = create((set, get) => ({
       if (!get().simulating) return;
       get()._stepDay();
       const after = get();
+
+      // A day the user's own team played is the one day worth stopping for.
+      // Raise the reveal BEFORE the stop check, so "Next Game" — which halts on
+      // exactly that date — still gets the score roll on its way out.
+      const userGame = (after.gameIdsByDate[after.currentDate] || [])
+        .map((id) => after.games[id])
+        .find((g) => g && g.played && (g.homeId === after.userTeamId || g.awayId === after.userTeamId));
+      const revealing = after.fullSim && !!userGame;
+      if (revealing) {
+        set({
+          reveal: {
+            gameId: userGame.id,
+            date: userGame.date,
+            won: userGame.result.winnerId === after.userTeamId,
+            // The bracket advances the winner the moment the game is played, so
+            // the next round's slot has to stay TBD until the roll is over —
+            // otherwise you can read your own result one column to the right.
+            nextGameId: userGame.nextGameId ?? null,
+            nextSlot: userGame.nextSlot ?? null,
+          },
+        });
+        // The roll plays out even if the loop stops here, so it clears itself.
+        setTimeout(() => {
+          if (get().reveal?.gameId === userGame.id) set({ reveal: null });
+        }, REVEAL_MS);
+      }
+
       const anyPending = Object.values(after.games).some(
         (g) => !g.played && g.homeId && g.awayId
       );
@@ -220,14 +260,9 @@ export const useGame = create((set, get) => ({
         set({ simulating: false });
         return;
       }
-      // Brief pause on days the user's own team plays, so results register.
-      const userPlayed = (after.gameIdsByDate[after.currentDate] || []).some((id) => {
-        const g = after.games[id];
-        return g && g.played && (g.homeId === after.userTeamId || g.awayId === after.userTeamId);
-      });
-      setTimeout(tick, userPlayed ? 360 : SIM_SPEED_MS);
+      setTimeout(tick, revealing ? REVEAL_MS : SIM_SPEED_MS[after.simSpeed]);
     };
-    setTimeout(tick, SIM_SPEED_MS);
+    setTimeout(tick, SIM_SPEED_MS[get().simSpeed]);
   },
 
   simulateTo: (targetDate) => {

@@ -107,10 +107,85 @@ table { border-collapse: collapse; width: 100%; }
 
 /* ================= TEAM SELECT ================= */
 .select { max-width: 1150px; margin: 0 auto; padding: 40px 24px 140px; }
-.select__hero { text-align: center; margin-bottom: 40px; }
-.select__badge { font-size: 52px; }
-.select__hero h1 { font-size: 40px; letter-spacing: -1px; margin: 8px 0; }
-.select__hero p { color: var(--muted); font-size: 16px; max-width: 560px; margin: 0 auto; }
+
+/* The title sequence: the hero starts parked near the middle of the window and
+   rides up into a page header once the name has landed. It stays in normal flow
+   the whole time — only a transform moves it — so nothing reflows underneath it. */
+.select.is-intro { height: 100vh; overflow: hidden; padding-bottom: 0; }
+.select__hero {
+  text-align: center; margin-bottom: 40px;
+  transition: transform 950ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.select.is-intro .select__hero { transform: translateY(30vh); }
+
+.select__logo {
+  display: block; margin: 0 auto; height: auto; width: min(430px, 74vw);
+  animation: logoIn 900ms ease both;
+  transition: width 950ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.select__hero.is-docked .select__logo { width: min(290px, 62vw); }
+@keyframes logoIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.select__title {
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700;
+  font-size: 34px; letter-spacing: -0.5px; margin: 18px 0 0;
+  opacity: 0; transition: opacity 700ms ease;
+}
+.select__title.is-in { opacity: 1; }
+
+.select__tag, .select__random { opacity: 0; transition: opacity 600ms ease 200ms; }
+.select__hero.is-docked .select__tag, .select__hero.is-docked .select__random { opacity: 1; }
+.select__tag { color: var(--muted); font-size: 15px; line-height: 1.5; max-width: 560px; margin: 12px auto 0; }
+
+.select__body { opacity: 0; transition: opacity 600ms ease; }
+.select:not(.is-intro) .select__body { opacity: 1; }
+
+.select__search { position: relative; display: flex; align-items: center; flex: 0 1 300px; }
+.select__search input {
+  width: 100%; height: 34px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-family: inherit; font-size: 13px; padding: 0 30px 0 32px; appearance: none;
+}
+.select__search input:focus { outline: none; border-color: var(--border-strong); background: var(--surface-2); }
+.select__search input::-webkit-search-cancel-button { display: none; }
+.select__searchicon { position: absolute; left: 12px; font-size: 12px; opacity: 0.6; pointer-events: none; }
+.select__searchclear {
+  position: absolute; right: 7px; background: none; border: none; color: var(--muted);
+  font-size: 17px; line-height: 1; padding: 2px 6px; border-radius: 6px;
+}
+.select__searchclear:hover { color: var(--text); background: var(--surface-3); }
+.select__empty { color: var(--muted); text-align: center; padding: 34px 0; }
+
+.filterbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 26px; padding-bottom: 22px; border-bottom: 1px solid var(--border);
+}
+.filterbar__filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filterbar .select-input { height: 34px; border-radius: 6px; }
+.filterbtn {
+  height: 34px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+  padding: 0 13px; border-radius: 6px; font-size: 12.5px; font-weight: 700;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.filterbtn:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
+.filterbtn.is-on { background: var(--gold); border-color: var(--gold); color: #111; }
+
+/* All 365 teams as one continuous A-Z grid, with a sticky letter rail beside it
+   so you can reach the S's without scrolling past everyone else. */
+.az { display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 14px; align-items: start; }
+.az__rail {
+  position: sticky; top: 16px; display: flex; flex-direction: column; gap: 1px;
+  max-height: calc(100vh - 32px);
+}
+.az__letter {
+  background: none; border: none; color: var(--faint); border-radius: 5px;
+  padding: 1px 0; font-size: 11px; font-weight: 800; line-height: 1.25;
+  transition: color 0.12s, background 0.12s;
+}
+.az__letter:hover:not(:disabled) { color: #111; background: var(--gold); }
+.az__letter:disabled { opacity: 0.25; cursor: default; }
+/* The rail scrolls a section flush to the top otherwise. */
+.az .conf { scroll-margin-top: 16px; }
 
 .conf { margin-bottom: 30px; }
 .conf__title {
@@ -120,18 +195,23 @@ table { border-collapse: collapse; width: 100%; }
 }
 .conf__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
 
+/* The team's color is the card's left square rather than a sliver, with the
+   abbreviation sitting in it. Card height and the color block's width are the
+   same number so the block stays square. */
 .teamcard {
-  display: flex; align-items: center; gap: 12px; text-align: left;
+  display: flex; align-items: stretch; text-align: left; height: 64px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; transition: all 0.15s;
+  border-radius: var(--radius); padding: 0; transition: all 0.15s;
   position: relative; overflow: hidden;
 }
-.teamcard::before {
-  content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--team);
+.teamcard__color {
+  display: flex; align-items: center; justify-content: center;
+  width: 62px; flex-shrink: 0; background: var(--team); color: var(--team-text);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.3px;
 }
 .teamcard:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
 .teamcard.is-selected { border-color: var(--team-accent); box-shadow: 0 0 0 2px var(--team-accent); }
-.teamcard__info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.teamcard__info { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; padding: 0 12px; }
 .teamcard__name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .select__bar {
@@ -152,6 +232,7 @@ table { border-collapse: collapse; width: 100%; }
   padding: 12px 24px; background: rgba(14,20,36,0.85); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30;
 }
+.topbar__logo { height: 32px; width: auto; flex-shrink: 0; opacity: 0.9; }
 .topbar__team { display: flex; align-items: center; gap: 12px; min-width: 240px; }
 .topbar__name { font-weight: 800; font-size: 16px; }
 .topbar__sub { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; }
@@ -164,6 +245,44 @@ table { border-collapse: collapse; width: 100%; }
 .topbar__date { font-size: 15px; font-weight: 700; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; }
 .topbar__confirm { font-size: 12px; color: var(--muted); }
+
+/* ---------- Settings menu ---------- */
+.settings { position: relative; }
+.settings__btn { font-size: 16px; }
+.settings__btn.is-open { background: var(--surface-3); border-color: var(--border-strong); }
+.settings__menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 290px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.45); padding: 6px;
+  animation: popIn 0.14s ease-out;
+}
+.settings__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px; border-radius: 8px;
+}
+.settings__row--stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.settings__label { font-size: 13px; font-weight: 700; }
+.settings__hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.settings__foot { border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 10px 6px; }
+.settings__abandon { width: 100%; }
+.settings__confirm { display: flex; gap: 6px; margin-top: 8px; }
+.settings__confirm .btn { flex: 1; }
+
+.toggle {
+  flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 700; min-width: 72px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.toggle:hover { border-color: var(--border-strong); color: var(--text); }
+.toggle.is-on { background: var(--team); border-color: var(--team); color: var(--team-text); }
+
+.segmented { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.segmented__btn {
+  flex: 1; background: none; border: none; color: var(--muted);
+  padding: 6px 0; border-radius: 6px; font-size: 12px; font-weight: 700; transition: background 0.15s, color 0.15s;
+}
+.segmented__btn:hover { color: var(--text); }
+.segmented__btn.is-on { background: var(--team); color: var(--team-text); }
 
 .tabs { display: flex; gap: 4px; background: var(--surface); padding: 4px; border-radius: 11px; border: 1px solid var(--border); }
 .tab {
@@ -248,6 +367,50 @@ table { border-collapse: collapse; width: 100%; }
 .chip--w { box-shadow: inset 0 0 0 1px rgba(52,211,153,0.45); }
 .chip--l { box-shadow: inset 0 0 0 1px rgba(251,113,133,0.4); }
 .chip--upcoming { background: rgba(255,255,255,0.05); color: var(--muted); }
+
+/* ---------- Score reveal (Full Sim Games) ----------
+   The digits spin, land, and only then does the W/L flash — so the payoff is
+   the result, not the arrival of the numbers. Timings mirror REVEAL_ROLL_MS /
+   REVEAL_MS in the store; the store holds the sim loop for exactly this long. */
+.chip--rolling { background: rgba(255,255,255,0.07); }
+.chip--rolling .chip__score { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip--rolling .chip__wl { color: var(--faint); }
+/* The flash and the pop have to finish inside REVEAL_MS (500ms) minus the roll
+   (170ms) — past that the reveal clears and the animation is cut off mid-swing. */
+.chip--flash { animation: chipFlash 0.3s ease-out; }
+@keyframes chipFlash {
+  0% { transform: scale(1.28); filter: brightness(1.9); }
+  55% { transform: scale(1); filter: brightness(1.15); }
+  100% { transform: none; filter: none; }
+}
+/* A win pops the whole day card once the digits land. A loss gets nothing. */
+.cal-cell.is-revealwin { animation: cellPop 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.4) 170ms both; z-index: 1; }
+@keyframes cellPop {
+  0% { transform: none; box-shadow: none; }
+  40% { transform: scale(1.09); box-shadow: 0 0 0 2px var(--win), 0 8px 26px rgba(52,211,153,0.35); }
+  100% { transform: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--win) 55%, transparent); }
+}
+/* Anything that would print the final before the digits reach it waits here.
+   170ms is REVEAL_ROLL_MS. */
+.boxscore__head.is-held { animation: heldScore 170ms steps(1) both; }
+/* The bracket's status line names your next opponent, which is itself the
+   result — so it waits out the whole reveal (REVEAL_MS), not just the roll. */
+.tstatus.is-held .tstatus__main, .tstatus.is-held .tstatus__seed {
+  animation: heldScore 500ms steps(1) both;
+}
+.tstatus.is-held { border-left-color: var(--border-strong); }
+@keyframes heldScore { 0%, 99% { opacity: 0; } 100% { opacity: 1; } }
+
+/* The same reveal inside a bracket: the rolling rows stay neutral, then the
+   user's matchup pops on a win and just settles on a loss. */
+.brow--rolling .brow__pts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.matchup--pop { animation: matchPop 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.4); z-index: 2; position: relative; }
+@keyframes matchPop {
+  0% { transform: none; }
+  40% { transform: scale(1.12); box-shadow: 0 0 0 2px var(--win), 0 10px 28px rgba(52,211,153,0.4); }
+  100% { transform: none; }
+}
+.matchup--flash { animation: chipFlash 0.3s ease-out; }
 .chip__wl { font-weight: 800; }
 .chip--w .chip__wl { color: var(--win); }
 .chip--l .chip__wl { color: var(--loss); }
