@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../store/useGame.js';
+import { isMuted, setMuted } from '../audio/sfx.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
 import { pollRanks } from '../engine/rankings.js';
@@ -90,23 +91,12 @@ export default function Layout() {
   );
 }
 
-// New Season (once the title game is in the books) + a two-step abandon, since
-// there's no persistence — one stray click would wipe the whole save.
+// New Season (once the title game is in the books), then the settings menu —
+// which is where Abandon Program now lives, behind a two-step confirm since
+// there's no persistence and one stray click would wipe the whole save.
 function SeasonControls({ phase }) {
   const newSeason = useGame((s) => s.newSeason);
-  const abandonSeason = useGame((s) => s.abandonSeason);
   const stopSim = useGame((s) => s.stopSim);
-  const [confirming, setConfirming] = useState(false);
-
-  if (confirming) {
-    return (
-      <div className="topbar__actions">
-        <span className="topbar__confirm">Abandon this program?</span>
-        <button className="btn btn--danger" onClick={() => { stopSim(); abandonSeason(); }}>Yes, quit</button>
-        <button className="btn" onClick={() => setConfirming(false)}>Cancel</button>
-      </div>
-    );
-  }
 
   return (
     <div className="topbar__actions">
@@ -115,9 +105,112 @@ function SeasonControls({ phase }) {
           Offseason →
         </button>
       )}
-      <button className="btn btn--ghost" onClick={() => setConfirming(true)} title="Quit and pick a new program">
-        Abandon Program
+      <SettingsMenu />
+    </div>
+  );
+}
+
+const SPEEDS = [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']];
+
+function SettingsMenu() {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [mute, setMute] = useState(isMuted());
+  const simSpeed = useGame((s) => s.simSpeed);
+  const setSimSpeed = useGame((s) => s.setSimSpeed);
+  const fullSim = useGame((s) => s.fullSim);
+  const setFullSim = useGame((s) => s.setFullSim);
+  const abandonSeason = useGame((s) => s.abandonSeason);
+  const stopSim = useGame((s) => s.stopSim);
+  const ref = useRef(null);
+
+  // Close on an outside click or Escape; reset the abandon confirm on the way out.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) { setOpen(false); setConfirming(false); } };
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); setConfirming(false); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const toggleMute = () => {
+    const next = !mute;
+    setMute(next);
+    setMuted(next);
+  };
+
+  return (
+    <div className="settings" ref={ref}>
+      <button
+        className={`btn btn--icon settings__btn ${open ? 'is-open' : ''}`}
+        onClick={() => setOpen(!open)}
+        title="Settings"
+        aria-label="Settings"
+      >
+        ⚙
       </button>
+
+      {open && (
+        <div className="settings__menu">
+          <div className="settings__row">
+            <div>
+              <div className="settings__label">Sound</div>
+              <div className="settings__hint">Reveal and roster fanfares</div>
+            </div>
+            <button className={`toggle ${mute ? '' : 'is-on'}`} onClick={toggleMute}>
+              {mute ? '🔇 Muted' : '🔊 On'}
+            </button>
+          </div>
+
+          <div className="settings__row">
+            <div>
+              <div className="settings__label">Full Sim Games</div>
+              <div className="settings__hint">Stop on your games and roll the score</div>
+            </div>
+            <button className={`toggle ${fullSim ? 'is-on' : ''}`} onClick={() => setFullSim(!fullSim)}>
+              {fullSim ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="settings__row settings__row--stack">
+            <div>
+              <div className="settings__label">Sim Speed</div>
+              <div className="settings__hint">How fast the calendar advances</div>
+            </div>
+            <div className="segmented">
+              {SPEEDS.map(([id, label]) => (
+                <button
+                  key={id}
+                  className={`segmented__btn ${simSpeed === id ? 'is-on' : ''}`}
+                  onClick={() => setSimSpeed(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings__foot">
+            {confirming ? (
+              <>
+                <span className="settings__hint">Abandon this program? The save is gone.</span>
+                <div className="settings__confirm">
+                  <button className="btn btn--danger" onClick={() => { stopSim(); abandonSeason(); }}>Yes, quit</button>
+                  <button className="btn" onClick={() => setConfirming(false)}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <button className="btn btn--ghost settings__abandon" onClick={() => setConfirming(true)}>
+                Abandon Program
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

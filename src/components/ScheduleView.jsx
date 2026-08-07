@@ -4,7 +4,7 @@ import { TEAMS_BY_ID } from '../data/teams.js';
 import { formatDate } from '../engine/schedule.js';
 import { wearsStar } from '../engine/players.js';
 import { pollRanks } from '../engine/rankings.js';
-import { TeamBadge, TeamName, RankChip, accentColor } from './common.jsx';
+import { TeamBadge, TeamName, RankChip, accentColor, useScoreRoll } from './common.jsx';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -24,6 +24,7 @@ export default function ScheduleView() {
   const simulateRegularSeason = useGame((s) => s.simulateRegularSeason);
   const stopSim = useGame((s) => s.stopSim);
   const teamStates = useGame((s) => s.teamStates);
+  const reveal = useGame((s) => s.reveal);
 
   const ranks = useMemo(() => pollRanks(teamStates), [teamStates]);
 
@@ -79,6 +80,7 @@ export default function ScheduleView() {
           currentDate={currentDate}
           userTeamId={userTeamId}
           userGamesByDate={userGamesByDate}
+          reveal={reveal}
           ranks={ranks}
           selectedDate={selectedDate}
           detailDate={detailDate}
@@ -95,6 +97,7 @@ export default function ScheduleView() {
         detailDate={detailDate}
         userGamesByDate={userGamesByDate}
         currentDate={currentDate}
+        revealing={!!reveal && reveal.date === detailDate}
       />
     </div>
   );
@@ -138,7 +141,7 @@ function CalendarToolbar({ visible, setVisible, simulating, onSim, onStop, onSim
   );
 }
 
-function Calendar({ visible, currentDate, userTeamId, userGamesByDate, ranks, selectedDate, detailDate, onSelect }) {
+function Calendar({ visible, currentDate, userTeamId, userGamesByDate, reveal, ranks, selectedDate, detailDate, onSelect }) {
   const { year, month } = visible;
   const first = new Date(year, month, 1);
   const startDow = first.getDay();
@@ -169,6 +172,8 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, ranks, se
           // month reads as "who am I playing" without any squinting.
           const opp = g ? TEAMS_BY_ID[g.homeId === userTeamId ? g.awayId : g.homeId] : null;
           const won = g?.played && g.result.winnerId === userTeamId;
+          // A win pops the whole day card once the digits land; a loss just sits there.
+          const revealing = !!reveal && reveal.date === iso;
           return (
             <button
               key={i}
@@ -181,11 +186,13 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, ranks, se
                 g && 'has-game',
                 opp && 'has-opp',
                 g?.played && (won ? 'is-win' : 'is-loss'),
+                revealing && 'is-revealing',
+                revealing && won && 'is-revealwin',
               ].filter(Boolean).join(' ')}
               onClick={() => onSelect(iso, !!g && !g.played)}
             >
               <span className="cal-cell__day">{day}</span>
-              {g && <GameChip game={g} userTeamId={userTeamId} opp={opp} rank={ranks[opp?.id]} />}
+              {g && <GameChip game={g} userTeamId={userTeamId} opp={opp} rank={ranks[opp?.id]} revealing={revealing} />}
             </button>
           );
         })}
@@ -194,7 +201,7 @@ function Calendar({ visible, currentDate, userTeamId, userGamesByDate, ranks, se
   );
 }
 
-function GameChip({ game, userTeamId, opp, rank }) {
+function GameChip({ game, userTeamId, opp, rank, revealing }) {
   const isHome = game.homeId === userTeamId;
   const prefix = game.neutral ? 'vs' : isHome ? 'vs' : '@';
   const r = game.result;
@@ -209,18 +216,34 @@ function GameChip({ game, userTeamId, opp, rank }) {
       </span>
       {opp && <span className="cal-cell__team">{opp.name}</span>}
       {game.played && (
-        <span className={`chip ${won ? 'chip--w' : 'chip--l'}`}>
-          <span className="chip__wl">{won ? 'W' : 'L'}</span>
-          <span className="chip__score">
-            {isHome ? r.homePts : r.awayPts}-{isHome ? r.awayPts : r.homePts}
+        revealing ? (
+          <ScoreRoll mine={isHome ? r.homePts : r.awayPts} theirs={isHome ? r.awayPts : r.homePts} won={won} />
+        ) : (
+          <span className={`chip ${won ? 'chip--w' : 'chip--l'}`}>
+            <span className="chip__wl">{won ? 'W' : 'L'}</span>
+            <span className="chip__score">
+              {isHome ? r.homePts : r.awayPts}-{isHome ? r.awayPts : r.homePts}
+            </span>
           </span>
-        </span>
+        )
       )}
     </span>
   );
 }
 
-function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, currentDate }) {
+// Counts both scores up to the final, then says whether you won.
+function ScoreRoll({ mine, theirs, won }) {
+  const { a, b, landed } = useScoreRoll(mine, theirs, true, won);
+  const cls = landed ? `chip ${won ? 'chip--w' : 'chip--l'} chip--flash` : 'chip chip--rolling';
+  return (
+    <span className={cls}>
+      <span className="chip__wl">{landed ? (won ? 'W' : 'L') : '·'}</span>
+      <span className="chip__score">{a}-{b}</span>
+    </span>
+  );
+}
+
+function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, currentDate, revealing }) {
   const detailGame = userGamesByDate[detailDate];
   const recent = userGames.filter((g) => g.played).slice(-6).reverse();
   const upcoming = userGames.filter((g) => !g.played).slice(0, 6);
@@ -235,6 +258,7 @@ function SidePanel({ userTeamId, userGames, detailDate, userGamesByDate, current
         userTeamId={userTeamId}
         nextGame={upcoming[0]}
         currentDate={currentDate}
+        revealing={revealing}
       />
 
       <section className="panel">
@@ -281,8 +305,8 @@ function GameRow({ game, userTeamId }) {
 
 // The day slot: a box score if the selected day has a finished game, a preview
 // if it has one coming, and the next game up if it has neither.
-function DayPanel({ game, date, userTeamId, nextGame, currentDate }) {
-  if (game && game.played) return <BoxScore game={game} userTeamId={userTeamId} />;
+function DayPanel({ game, date, userTeamId, nextGame, currentDate, revealing }) {
+  if (game && game.played) return <BoxScore game={game} userTeamId={userTeamId} revealing={revealing} />;
 
   const upcoming = game || nextGame;
   const isHome = upcoming && upcoming.homeId === userTeamId;
@@ -321,7 +345,7 @@ function DayPanel({ game, date, userTeamId, nextGame, currentDate }) {
   );
 }
 
-function BoxScore({ game, userTeamId }) {
+function BoxScore({ game, userTeamId, revealing }) {
   const isHome = game.homeId === userTeamId;
   const oppId = isHome ? game.awayId : game.homeId;
   const box = isHome ? game.result.homeBox : game.result.awayBox;
@@ -335,7 +359,9 @@ function BoxScore({ game, userTeamId }) {
 
   return (
     <section className="panel boxscore">
-      <div className="boxscore__head">
+      {/* The panel would otherwise print the final while the calendar chip is
+          still spinning for it. */}
+      <div className={`boxscore__head ${revealing ? 'is-held' : ''}`}>
         <span className={`pill ${won ? 'pill--w' : 'pill--l'}`}>{won ? 'WIN' : 'LOSS'}</span>
         <span className="boxscore__score">{my}–{their}</span>
         <span className="boxscore__opp">{game.neutral ? 'vs' : isHome ? 'vs' : '@'} <TeamName teamId={oppId} /></span>

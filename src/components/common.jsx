@@ -1,4 +1,43 @@
+import { useEffect, useState } from 'react';
 import { TEAMS_BY_ID } from '../data/teams.js';
+import { REVEAL_ROLL_MS } from '../store/useGame.js';
+import { playResultSfx } from '../audio/sfx.js';
+
+// Both scores climb from zero to their finals together, easing out so they slow
+// into the number rather than snapping to it. `landed` is what the W/L flash
+// waits on — the result is the payoff, so nothing may give it away early, and
+// the win/loss sting fires on the same frame the digits stop.
+export function useScoreRoll(a, b, active, won) {
+  const [state, setState] = useState({ a, b, landed: !active });
+
+  useEffect(() => {
+    if (!active) {
+      setState({ a, b, landed: true });
+      return;
+    }
+    let raf;
+    const start = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / REVEAL_ROLL_MS);
+      if (p >= 1) {
+        setState({ a, b, landed: true });
+        // One chain of frames per activation (the cleanup cancels any other),
+        // so this fires exactly once per game.
+        playResultSfx(won);
+        return;
+      }
+      const eased = 1 - Math.pow(1 - p, 3);
+      setState({ a: Math.round(a * eased), b: Math.round(b * eased), landed: false });
+      raf = requestAnimationFrame(step);
+    };
+    setState({ a: 0, b: 0, landed: false });
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a, b, active]);
+
+  return state;
+}
 
 const rgb = (hex) => {
   const c = hex.replace('#', '');

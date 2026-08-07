@@ -3,7 +3,7 @@ import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { conferenceStandings } from '../engine/rankings.js';
 import { NATIONAL_ROUND_NAMES, CONF_ROUND_NAMES, REGIONS } from '../engine/tournament.js';
-import { TeamBadge } from './common.jsx';
+import { TeamBadge, useScoreRoll } from './common.jsx';
 import { ORD } from './Interstitials.jsx';
 import SelectionSunday from './SelectionSunday.jsx';
 
@@ -99,10 +99,13 @@ function userStatus(games, userTeamId, roundNames) {
   };
 }
 
+// The status bar reads off played games, so it would announce the result while
+// the matchup below is still counting up to it.
 function StatusBar({ status, children }) {
+  const held = useGame((s) => !!s.reveal);
   if (!status) return null;
   return (
-    <div className={`tstatus tstatus--${status.state}`}>
+    <div className={`tstatus tstatus--${status.state} ${held ? 'is-held' : ''}`}>
       <div className="tstatus__main">
         <div className="tstatus__headline">{status.headline}</div>
         <div className="tstatus__detail">{status.detail}</div>
@@ -299,12 +302,33 @@ function RegionBlock({ games, label, userTeamId, isUserRegion, mirror }) {
 export function Matchup({ game, userTeamId, compact, big }) {
   const homeWon = game.played && game.result.winnerId === game.homeId;
   const awayWon = game.played && game.result.winnerId === game.awayId;
-  const isUsers = game.homeId === userTeamId || game.awayId === userTeamId;
+  const reveal = useGame((s) => s.reveal);
+
+  // This is the game the rolling one feeds: hold its incoming slot at TBD until
+  // the reveal is over, so the winner doesn't turn up a round to the right and
+  // give the score away. The whole matchup then reads as unplayed, which it is.
+  const pendingSlot = reveal?.nextGameId === game.id ? reveal.nextSlot : null;
+  const homeId = pendingSlot === 'home' ? null : game.homeId;
+  const awayId = pendingSlot === 'away' ? null : game.awayId;
+  const isUsers = homeId === userTeamId || awayId === userTeamId;
+
+  // Only the user's own game rolls, and only while the sim is holding for it.
+  const rolling = reveal?.gameId === game.id;
+  const roll = useScoreRoll(
+    game.played ? game.result.homePts : 0,
+    game.played ? game.result.awayPts : 0,
+    rolling,
+    game.played && game.result.winnerId === userTeamId,
+  );
+  // Until the digits land, the bracket has to look like the game hasn't been
+  // played — the outcome frame and the W/L marks would both give it away.
+  const settled = game.played && (!rolling || roll.landed);
+
   // The user's own games get an outcome frame: green if they advanced, red if
   // this is where the run ended, and a live marker if it hasn't been played.
   const outcome = !isUsers
     ? ''
-    : !game.played
+    : !settled
       ? 'matchup--next'
       : game.result.winnerId === userTeamId
         ? 'matchup--won'
@@ -319,29 +343,31 @@ export function Matchup({ game, userTeamId, compact, big }) {
         big && 'matchup--big',
         isUsers && 'matchup--mine',
         outcome,
+        rolling && roll.landed && (game.result.winnerId === userTeamId ? 'matchup--pop' : 'matchup--flash'),
       ].filter(Boolean).join(' ')}
     >
       <BracketRow
-        teamId={game.homeId} seed={game.seedHome} played={game.played}
-        pts={game.played ? game.result.homePts : null} won={homeWon}
-        user={game.homeId === userTeamId}
+        teamId={homeId} seed={pendingSlot === 'home' ? null : game.seedHome} played={settled}
+        pts={game.played ? (rolling ? roll.a : game.result.homePts) : null} won={homeWon}
+        user={homeId === userTeamId} rolling={rolling && !roll.landed}
       />
       <BracketRow
-        teamId={game.awayId} seed={game.seedAway} played={game.played}
-        pts={game.played ? game.result.awayPts : null} won={awayWon}
-        user={game.awayId === userTeamId}
+        teamId={awayId} seed={pendingSlot === 'away' ? null : game.seedAway} played={settled}
+        pts={game.played ? (rolling ? roll.b : game.result.awayPts) : null} won={awayWon}
+        user={awayId === userTeamId} rolling={rolling && !roll.landed}
       />
     </div>
   );
 }
 
-function BracketRow({ teamId, seed, pts, won, played, user }) {
+function BracketRow({ teamId, seed, pts, won, played, user, rolling }) {
   return (
     <div
       className={[
         'brow',
         played && (won ? 'brow--won' : 'brow--lost'),
         user && 'brow--user',
+        rolling && 'brow--rolling',
       ].filter(Boolean).join(' ')}
     >
       <span className="brow__seed">{seed ?? ''}</span>

@@ -4,7 +4,7 @@ import { TEAMS_BY_ID } from '../data/teams.js';
 import { careerAverages, overallTier, CLASS_LABEL } from '../engine/players.js';
 import { DEPARTURE_LABEL } from '../engine/offseason.js';
 import { TeamBadge, contrastColor, accentColor } from './common.jsx';
-import { playRevealSfx, playTeamSfx, isMuted, setMuted } from '../audio/sfx.js';
+import { playRevealSfx, playTeamSfx } from '../audio/sfx.js';
 import PlayerCard from './PlayerCard.jsx';
 import RosterView from './RosterView.jsx';
 
@@ -34,13 +34,6 @@ export default function OffseasonReveal() {
   );
 
   const [act, setAct] = useState('development');
-  const [mute, setMute] = useState(isMuted());
-
-  const toggleMute = () => {
-    const next = !mute;
-    setMuted(next);
-    setMute(next);
-  };
 
   return (
     <div
@@ -51,14 +44,6 @@ export default function OffseasonReveal() {
         '--team-text': contrastColor(team.color),
       }}
     >
-      <button
-        className="btn btn--icon reveal__mute"
-        onClick={toggleMute}
-        title={mute ? 'Unmute reveal sounds' : 'Mute reveal sounds'}
-      >
-        {mute ? '🔇' : '🔊'}
-      </button>
-
       <div className={`reveal__inner ${act === 'roster' ? 'reveal__inner--wide' : ''}`}>
         <div className="reveal__team is-shown">
           <TeamBadge teamId={userTeamId} size={64} />

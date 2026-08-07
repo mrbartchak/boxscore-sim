@@ -246,6 +246,44 @@ table { border-collapse: collapse; width: 100%; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; }
 .topbar__confirm { font-size: 12px; color: var(--muted); }
 
+/* ---------- Settings menu ---------- */
+.settings { position: relative; }
+.settings__btn { font-size: 16px; }
+.settings__btn.is-open { background: var(--surface-3); border-color: var(--border-strong); }
+.settings__menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 290px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.45); padding: 6px;
+  animation: popIn 0.14s ease-out;
+}
+.settings__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px; border-radius: 8px;
+}
+.settings__row--stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.settings__label { font-size: 13px; font-weight: 700; }
+.settings__hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.settings__foot { border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 10px 6px; }
+.settings__abandon { width: 100%; }
+.settings__confirm { display: flex; gap: 6px; margin-top: 8px; }
+.settings__confirm .btn { flex: 1; }
+
+.toggle {
+  flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 700; min-width: 72px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.toggle:hover { border-color: var(--border-strong); color: var(--text); }
+.toggle.is-on { background: var(--team); border-color: var(--team); color: var(--team-text); }
+
+.segmented { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.segmented__btn {
+  flex: 1; background: none; border: none; color: var(--muted);
+  padding: 6px 0; border-radius: 6px; font-size: 12px; font-weight: 700; transition: background 0.15s, color 0.15s;
+}
+.segmented__btn:hover { color: var(--text); }
+.segmented__btn.is-on { background: var(--team); color: var(--team-text); }
+
 .tabs { display: flex; gap: 4px; background: var(--surface); padding: 4px; border-radius: 11px; border: 1px solid var(--border); }
 .tab {
   background: transparent; border: none; color: var(--muted);
@@ -329,6 +367,50 @@ table { border-collapse: collapse; width: 100%; }
 .chip--w { box-shadow: inset 0 0 0 1px rgba(52,211,153,0.45); }
 .chip--l { box-shadow: inset 0 0 0 1px rgba(251,113,133,0.4); }
 .chip--upcoming { background: rgba(255,255,255,0.05); color: var(--muted); }
+
+/* ---------- Score reveal (Full Sim Games) ----------
+   The digits spin, land, and only then does the W/L flash — so the payoff is
+   the result, not the arrival of the numbers. Timings mirror REVEAL_ROLL_MS /
+   REVEAL_MS in the store; the store holds the sim loop for exactly this long. */
+.chip--rolling { background: rgba(255,255,255,0.07); }
+.chip--rolling .chip__score { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip--rolling .chip__wl { color: var(--faint); }
+/* The flash and the pop have to finish inside REVEAL_MS (500ms) minus the roll
+   (170ms) — past that the reveal clears and the animation is cut off mid-swing. */
+.chip--flash { animation: chipFlash 0.3s ease-out; }
+@keyframes chipFlash {
+  0% { transform: scale(1.28); filter: brightness(1.9); }
+  55% { transform: scale(1); filter: brightness(1.15); }
+  100% { transform: none; filter: none; }
+}
+/* A win pops the whole day card once the digits land. A loss gets nothing. */
+.cal-cell.is-revealwin { animation: cellPop 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.4) 170ms both; z-index: 1; }
+@keyframes cellPop {
+  0% { transform: none; box-shadow: none; }
+  40% { transform: scale(1.09); box-shadow: 0 0 0 2px var(--win), 0 8px 26px rgba(52,211,153,0.35); }
+  100% { transform: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--win) 55%, transparent); }
+}
+/* Anything that would print the final before the digits reach it waits here.
+   170ms is REVEAL_ROLL_MS. */
+.boxscore__head.is-held { animation: heldScore 170ms steps(1) both; }
+/* The bracket's status line names your next opponent, which is itself the
+   result — so it waits out the whole reveal (REVEAL_MS), not just the roll. */
+.tstatus.is-held .tstatus__main, .tstatus.is-held .tstatus__seed {
+  animation: heldScore 500ms steps(1) both;
+}
+.tstatus.is-held { border-left-color: var(--border-strong); }
+@keyframes heldScore { 0%, 99% { opacity: 0; } 100% { opacity: 1; } }
+
+/* The same reveal inside a bracket: the rolling rows stay neutral, then the
+   user's matchup pops on a win and just settles on a loss. */
+.brow--rolling .brow__pts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.matchup--pop { animation: matchPop 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.4); z-index: 2; position: relative; }
+@keyframes matchPop {
+  0% { transform: none; }
+  40% { transform: scale(1.12); box-shadow: 0 0 0 2px var(--win), 0 10px 28px rgba(52,211,153,0.4); }
+  100% { transform: none; }
+}
+.matchup--flash { animation: chipFlash 0.3s ease-out; }
 .chip__wl { font-weight: 800; }
 .chip--w .chip__wl { color: var(--win); }
 .chip--l .chip__wl { color: var(--loss); }

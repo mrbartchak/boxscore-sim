@@ -3,7 +3,7 @@ import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { careerAverages, overallTier, POSITIONS } from '../engine/players.js';
 import { TeamBadge, contrastColor, accentColor } from './common.jsx';
-import { playRevealSfx, playTeamSfx, isMuted, setMuted } from '../audio/sfx.js';
+import { playRevealSfx, playTeamSfx } from '../audio/sfx.js';
 import PlayerCard from './PlayerCard.jsx';
 
 // Higher tiers dwell longer so the reveal builds to the best player.
@@ -22,7 +22,6 @@ export default function RosterReveal() {
 
   const [teamShown, setTeamShown] = useState(!revealRandom);
   const [revealed, setRevealed] = useState(0);
-  const [mute, setMute] = useState(isMuted());
   // Effects re-run on re-render (and twice under StrictMode); these make each
   // cue fire exactly once.
   const sounded = useRef(0); // highest card index already sounded
@@ -54,23 +53,10 @@ export default function RosterReveal() {
     playRevealSfx(overallTier(starters[revealed - 1].overall));
   }, [teamShown, revealed, starters]);
 
-  const toggleMute = () => {
-    const next = !mute;
-    setMuted(next);
-    setMute(next);
-  };
-
   const allShown = revealed >= starters.length;
 
   return (
     <div className="reveal" style={{ '--team': team.color, '--team-accent': accentColor(team.color), '--team-text': contrastColor(team.color) }}>
-      <button
-        className="btn btn--icon reveal__mute"
-        onClick={toggleMute}
-        title={mute ? 'Unmute reveal sounds' : 'Mute reveal sounds'}
-      >
-        {mute ? '🔇' : '🔊'}
-      </button>
       <div className="reveal__inner">
         <div className={`reveal__team ${teamShown ? 'is-shown' : ''}`}>
           {teamShown ? (
