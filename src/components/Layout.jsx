@@ -20,7 +20,7 @@ const PHASE_LABEL = {
 const TABS = [
   ['schedule', 'Schedule'],
   ['roster', 'Roster'],
-  ['stats', 'Stats & Rankings'],
+  ['stats', 'Rankings'],
   ['legacy', 'Legacy'],
 ];
 
@@ -45,45 +45,50 @@ export default function Layout() {
         '--team-text': contrastColor(team.color),
       }}>
       <header className="topbar">
-        {/* Masked, not an <img>: the file is white ink, and the mask lets it be
-            painted in the team's color once you're inside a program. */}
-        <div className="topbar__logo" role="img" aria-label="Box Score" />
-
-        <div className="topbar__team">
-          <TeamBadge teamId={userTeamId} size={40} />
-          <div>
-            <div className="topbar__name">
-              {team.name}
-              <RankChip rank={rank} />
-            </div>
-            <div className="topbar__sub">
-              <span className="topbar__record">{ts.record.w}-{ts.record.l}</span>
-              <span className="topbar__conf">
-                {team.conference}
-                <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
-              </span>
+        {/* The bar is full-bleed but its contents share the content area's
+            container, so the team block starts on the same line as the page
+            below it. Left and right are equal-width columns, which is what puts
+            the nav rail — and the wordmark at its center — on the bar's center. */}
+        <div className="topbar__inner">
+          <div className="topbar__left">
+            <div className="topbar__team">
+              <TeamBadge teamId={userTeamId} size={40} />
+              <div>
+                <div className="topbar__name">
+                  {team.name}
+                  <RankChip rank={rank} />
+                </div>
+                <div className="topbar__sub">
+                  <span className="topbar__record">{ts.record.w}-{ts.record.l}</span>
+                  <span className="topbar__conf">
+                    {team.conference}
+                    <span className="topbar__conf-rec"> ({ts.confRecord.w}-{ts.confRecord.l} conf)</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* One component: two tabs, the wordmark, two tabs. The groups are
+              equal-width halves of the rail so the logo sits on its true center
+              however long the labels get. */}
+          <nav className="navrail">
+            <TabGroup tabs={TABS.slice(0, 2)} activeView={activeView} setView={setView} align="end" />
+            {/* Masked, not an <img>: the file is white ink, and the mask paints
+                it in the surface color with the letters knocked through. */}
+            <div className="navrail__logo" role="img" aria-label="Box Score" />
+            <TabGroup tabs={TABS.slice(2)} activeView={activeView} setView={setView} align="start" />
+          </nav>
+
+          <div className="topbar__right">
+            <div className="topbar__status">
+              <div className="topbar__phase">{PHASE_LABEL[phase]}</div>
+              <div className="topbar__date">Season {seasonNumber} · {formatDate(currentDate)}</div>
+            </div>
+
+            <SeasonControls phase={phase} />
+          </div>
         </div>
-
-        <nav className="tabs">
-          {TABS.map(([id, label]) => (
-            <button
-              key={id}
-              className={`tab ${activeView === id ? 'is-active' : ''}`}
-              onClick={() => setView(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="topbar__status">
-          <div className="topbar__phase">{PHASE_LABEL[phase]}</div>
-          <div className="topbar__date">Season {seasonNumber} · {formatDate(currentDate)}</div>
-        </div>
-
-        <SeasonControls phase={phase} />
       </header>
 
       <main className="content">
@@ -92,6 +97,22 @@ export default function Layout() {
         {activeView === 'stats' && <StatsView />}
         {activeView === 'legacy' && <LegacyView />}
       </main>
+    </div>
+  );
+}
+
+function TabGroup({ tabs, activeView, setView, align }) {
+  return (
+    <div className={`navrail__group navrail__group--${align}`}>
+      {tabs.map(([id, label]) => (
+        <button
+          key={id}
+          className={`tab ${activeView === id ? 'is-active' : ''}`}
+          onClick={() => setView(id)}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -234,22 +234,23 @@ table { border-collapse: collapse; width: 100%; }
 
 /* ================= APP SHELL ================= */
 .app { min-height: 100vh; display: flex; flex-direction: column; }
+/* Full-bleed bar, but the contents ride in the same 1400px container as
+   `.content` — otherwise the team block drifts away from the page's left edge
+   the moment the window is wider than the container. */
 .topbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 20px;
-  padding: 12px 24px; background: rgba(14,20,36,0.85); backdrop-filter: blur(12px);
+  background: rgba(14,20,36,0.85); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30;
 }
-/* The wordmark takes the team's color. The file is a white silhouette, so it is
-   used as a MASK over a team-colored fill rather than drawn as an image — the
-   letters stay knocked out to the page behind, exactly as the artwork has them.
-   `--team-accent` and not `--team`: this is ink, and half of Division I wears a
-   navy that disappears against this background. */
-.topbar__logo {
-  height: 32px; aspect-ratio: 1070 / 211; flex-shrink: 0; opacity: 0.9;
-  background: var(--team-accent);
-  -webkit-mask: url(/logo-light.svg) no-repeat center / contain;
-  mask: url(/logo-light.svg) no-repeat center / contain;
+.topbar__inner {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  max-width: 1400px; margin: 0 auto; width: 100%; padding: 12px 24px;
 }
+/* Equal-width side columns. The nav rail is the middle child of a flex row, so
+   it is only centered on the BAR if the two sides claim the same width — with
+   `space-between` alone it drifts left or right as the date or the team name
+   changes length. `flex: 1 1 0` makes them match regardless of content. */
+.topbar__left, .topbar__right { display: flex; align-items: center; gap: 20px; flex: 1 1 0; min-width: 0; }
+.topbar__right { justify-content: flex-end; gap: 12px; }
 .topbar__team { display: flex; align-items: center; gap: 12px; min-width: 240px; }
 .topbar__name { font-weight: 800; font-size: 16px; }
 .topbar__sub { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; }
@@ -257,7 +258,9 @@ table { border-collapse: collapse; width: 100%; }
 .topbar__record { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
 .topbar__conf { min-width: 0; }
 .topbar__conf-rec { color: var(--faint); }
-.topbar__status { text-align: right; min-width: 180px; }
+/* No min-width: it only ever padded dead space to the left of the status block
+   and the season button beside it. The column is already sized by the bar. */
+.topbar__status { text-align: right; }
 .topbar__phase { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--team-accent); font-weight: 700; }
 .topbar__date { font-size: 15px; font-weight: 700; }
 .topbar__actions { display: flex; align-items: center; gap: 8px; }
@@ -301,10 +304,42 @@ table { border-collapse: collapse; width: 100%; }
 .segmented__btn:hover { color: var(--text); }
 .segmented__btn.is-on { background: var(--team); color: var(--team-text); }
 
-.tabs { display: flex; gap: 4px; background: var(--surface); padding: 4px; border-radius: 11px; border: 1px solid var(--border); }
+/* The nav rail: two tabs, the wordmark, two tabs, in one trough.
+   The logo is centered on the rail only if the tab groups are equal width, which
+   is why the rail carries a definite flex basis and the groups a basis of 0 —
+   they then split whatever the rail has, rather than each taking the width of
+   its own labels. `min-width: max-content` is the floor: squeeze the bar and the
+   groups stop at their labels instead of wrapping them. */
+.navrail {
+  display: flex; align-items: center; gap: 10px; flex: 0 1 680px;
+  background: var(--bg-2); padding: 3px; border-radius: 11px; /*border: 2px solid var(--border);*/
+}
+.navrail__group { display: flex; gap: 4px; flex: 1 1 0; min-width: max-content; }
+.navrail__group--end { justify-content: flex-end; }
+.navrail__group--start { justify-content: flex-start; }
+/* The wordmark stands taller than the trough it sits in, so the outline reads as
+   running behind it and out the other side. Two things make that work:
+   - the NEGATIVE vertical margin. The logo is a flex item, so at its real height
+     it would just make the rail taller; shrinking its margin box below the tab
+     height leaves the rail's height set by the tabs and lets the ink overhang.
+   - the 3px overhang, which is tuned to the artwork. The logo's own frame band
+     is ~10% of its height (~4px here), so the rail's top and bottom borders
+     cross it INSIDE that band and are covered by the ink — except at the rounded
+     corners, where the line stays visible right up to the mark. The overhang is
+     the difference between the logo's height and the rail's, so shrinking one
+     without the other is what makes or breaks the effect.
+   Masked rather than drawn, so the fill colors it and the letters stay knocked
+   through to the trough behind them. */
+.navrail__logo {
+  flex: 0 0 auto; height: 36px; aspect-ratio: 1070 / 211; margin: -12px 0;
+  background: var(--muted);
+  -webkit-mask: url(/logo-light.svg) no-repeat center / contain;
+  mask: url(/logo-light.svg) no-repeat center / contain;
+}
 .tab {
+  white-space: nowrap;
   background: transparent; border: none; color: var(--muted);
-  padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: all 0.15s;
+  padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: all 0.15s;
 }
 .tab:hover { color: var(--text); }
 .tab.is-active { background: var(--team); color: var(--team-text); }
@@ -1083,8 +1118,11 @@ table { border-collapse: collapse; width: 100%; }
 @media (max-width: 900px) {
   .legacy__rafters { grid-template-columns: 1fr; }
   .schedule { grid-template-columns: 1fr; }
-  .topbar { flex-wrap: wrap; }
-  .tabs { order: 3; width: 100%; justify-content: center; }
+  .topbar__inner { flex-wrap: wrap; }
+  /* The rail drops to its own row here, so the sides no longer have to be
+     symmetrical — let them take the width they need instead of half each. */
+  .topbar__left, .topbar__right { flex: 1 1 auto; }
+  .navrail { order: 3; flex: 1 1 100%; justify-content: center; }
   .lineup__row { grid-template-columns: repeat(2, 1fr); }
   .reveal__cards, .offseason__grid { grid-template-columns: repeat(2, 1fr); }
   .reveal__name { font-size: 32px; }
