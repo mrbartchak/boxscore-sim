@@ -52,11 +52,13 @@ data/  →  engine/  →  store/  →  components/
   helpers, `SEASON_START`. See "The schedule" below.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
 - `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
+- `engine/history.js` — `buildSeasonRecord()`, the one row the record book keeps
+  per completed season. See "The record book" below.
 - `store/useGame.js` — see below.
 - `audio/sfx.js` — Web Audio reveal SFX, synthesized (no asset files). One
   fanfare per `overallTier`; sits outside `engine/` because it touches browser
   APIs. Exports `playRevealSfx(tier)`, `playTeamSfx()`, `setMuted`/`isMuted`.
-- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `SelectionSunday` (seed reveal), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `OffseasonReveal`, `Interstitials` (phase gates), `PlayerCard`, `common.jsx`.
+- `components/` — `App`, `Layout`, `SeasonView` (phase router for the schedule tab), `ScheduleView` (calendar), `TournamentView` (conf + national screens), `SelectionSunday` (seed reveal), `RosterView`, `StatsView`, `TeamSelect`, `RosterReveal`, `OffseasonReveal`, `Interstitials` (phase gates), `LegacyView` (rafters + record book), `PlayerCard`, `common.jsx`.
 
 ## Key domain concepts
 
@@ -232,6 +234,30 @@ Known residual: after a decade the blue-blood band sits ~2 points below a fresh
 league's, because the pros drain the best underclassmen and generation never does.
 That is arguably the more realistic of the two.
 
+### The record book (`engine/history.js` → the Legacy tab)
+`store.history` is one `buildSeasonRecord()` row per COMPLETED season, oldest
+first. Like `userTeamId` and `seasonNumber` it lives **outside `BLANK_SEASON`**,
+and it is cleared only by `selectTeam` and `abandonSeason` — a new season must
+not wipe the thing that remembers the old ones.
+
+It is written at the **NATIONAL → DONE transition inside `_stepDay`**, not in
+`newSeason()`, for two reasons: the offseason is about to delete every game the
+row is derived from, and writing it at DONE means the season you just finished is
+already in the Legacy tab while you're still looking at the champion banner.
+
+Two traps the row exists to avoid:
+- **`ts.record` is not the regular-season record** by the time the season ends —
+  both tournaments have been folded into it. The row re-counts wins from the
+  `REGULAR` games themselves.
+- **`teamStrength` includes `form`**, the March mood swing rolled at each
+  postseason phase. The recorded `overall` zeroes it, so the number describes the
+  roster rather than the week it happened to get hot.
+
+`LegacyView` hangs three banners off `natChamp`, `confChamp` and `semiFinalist`
+(reached the Final Four, i.e. `roundReached >= FINAL_FOUR_ROUND`), in the user
+team's colors via the `--team` custom properties `Layout` already puts on the
+root. An unearned banner still hangs, greyed — the empty rafter is the point.
+
 ### Simulation weighting — all calibrated against `data/marchmadness.js`
 `simulateGame` is `ratingGap * MARGIN_PER_RATING + home court`, scattered by
 `MARGIN_SD`. Do not change these blind — `npm run calibrate` exists to check them:
@@ -319,9 +345,9 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
 
 ## Known limitations / possible next steps
 - **No persistence** — refresh resets everything. (Postgres/localStorage TBD.)
-- **No dynasty history** — rosters, development and recruiting now carry across
-  seasons, but nothing *records* the seasons: no year-by-year team history, no
-  banners, no career leaderboards, no coach reputation feeding back into prestige
+- **History is team-level only** — `store.history` records each season's finish
+  (see "The record book"), but there are still no career leaderboards, no
+  all-time player records, and no coach reputation feeding back into prestige
   (`team.prestige` is static data, so winning never makes a program stronger).
 - **Recruiting is not a decision** — `recruitClass` hands you a class sized to your
   departures at your prestige level. There is no board, no pitch, no competition.

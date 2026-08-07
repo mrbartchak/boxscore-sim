@@ -1010,7 +1010,65 @@ table { border-collapse: collapse; width: 100%; }
 .gate__note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0; }
 .gate__note strong { color: var(--text); }
 
+/* ---------- Legacy: the rafters ---------- */
+/* Three banners hanging off a beam. The cloth is the team's real color (fills
+   always are), the ink is the readable version — same rule as everywhere else.
+   A banner nobody has earned still hangs, drained of color, so the empty ones
+   read as something to go get rather than a gap in the layout. */
+.legacy__rafters {
+  position: relative;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px; justify-items: center;
+  margin-bottom: 26px; padding-top: 4px;
+}
+.legacy__rafters::before {
+  content: ''; position: absolute; top: 0; left: -6px; right: -6px; height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--surface-3), var(--bg-2));
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 4px 10px rgba(0,0,0,0.35);
+}
+
+.banner { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 268px; }
+.banner__hook { width: 2px; height: 26px; background: var(--border-strong); }
+.banner__cloth {
+  width: 100%; padding: 18px 16px 34px; text-align: center;
+  background: linear-gradient(180deg, var(--team), color-mix(in srgb, var(--team) 78%, #000));
+  color: var(--team-text);
+  /* The notched tail is what makes it read as a banner and not a card. */
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 22px), 0 100%);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  border-radius: 3px 3px 0 0;
+}
+.banner__abbr {
+  font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: 0.7;
+}
+.banner__icon { font-size: 26px; line-height: 1; margin: 6px 0 4px; }
+.banner__title {
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase;
+}
+.banner__sub { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+.banner__years {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.28);
+}
+.banner__year {
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  background: rgba(0,0,0,0.28);
+}
+.banner__none { font-size: 11px; opacity: 0.6; font-style: italic; }
+.banner.is-empty .banner__cloth { filter: grayscale(1) brightness(0.7); opacity: 0.45; }
+
+.legacy__empty { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; padding: 18px 2px; text-align: center; }
+.legacy__table .faint { color: var(--faint); }
+.legacy__table .is-champ { background: rgba(245,196,81,0.08); }
+.finish { font-weight: 600; }
+.finish--deep { color: var(--team-accent); font-weight: 700; }
+.finish--title { color: var(--gold); font-weight: 800; }
+
 @media (max-width: 900px) {
+  .legacy__rafters { grid-template-columns: 1fr; }
   .schedule { grid-template-columns: 1fr; }
   .topbar { flex-wrap: wrap; }
   .tabs { order: 3; width: 100%; justify-content: center; }

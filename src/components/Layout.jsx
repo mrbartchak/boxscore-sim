@@ -8,6 +8,7 @@ import { TeamBadge, RankChip, contrastColor, accentColor } from './common.jsx';
 import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
+import LegacyView from './LegacyView.jsx';
 
 const PHASE_LABEL = {
   REGULAR: 'Regular Season',
@@ -20,6 +21,7 @@ const TABS = [
   ['schedule', 'Schedule'],
   ['roster', 'Roster'],
   ['stats', 'Stats & Rankings'],
+  ['legacy', 'Legacy'],
 ];
 
 export default function Layout() {
@@ -86,6 +88,7 @@ export default function Layout() {
         {activeView === 'schedule' && <SeasonView />}
         {activeView === 'roster' && <RosterView />}
         {activeView === 'stats' && <StatsView />}
+        {activeView === 'legacy' && <LegacyView />}
       </main>
     </div>
   );
