@@ -239,7 +239,17 @@ table { border-collapse: collapse; width: 100%; }
   padding: 12px 24px; background: rgba(14,20,36,0.85); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30;
 }
-.topbar__logo { height: 32px; width: auto; flex-shrink: 0; opacity: 0.9; }
+/* The wordmark takes the team's color. The file is a white silhouette, so it is
+   used as a MASK over a team-colored fill rather than drawn as an image — the
+   letters stay knocked out to the page behind, exactly as the artwork has them.
+   `--team-accent` and not `--team`: this is ink, and half of Division I wears a
+   navy that disappears against this background. */
+.topbar__logo {
+  height: 32px; aspect-ratio: 1070 / 211; flex-shrink: 0; opacity: 0.9;
+  background: var(--team-accent);
+  -webkit-mask: url(/logo-light.svg) no-repeat center / contain;
+  mask: url(/logo-light.svg) no-repeat center / contain;
+}
 .topbar__team { display: flex; align-items: center; gap: 12px; min-width: 240px; }
 .topbar__name { font-weight: 800; font-size: 16px; }
 .topbar__sub { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; }
@@ -1031,7 +1041,9 @@ table { border-collapse: collapse; width: 100%; }
 .banner { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 268px; }
 .banner__hook { width: 2px; height: 26px; background: var(--border-strong); }
 .banner__cloth {
-  width: 100%; padding: 18px 16px 34px; text-align: center;
+  /* Tall and narrow, the way a real one hangs. `min-height` rather than a fixed
+     one so a program with a dozen titles just runs longer. */
+  width: 100%; min-height: 320px; padding: 24px 16px 48px; text-align: center;
   background: linear-gradient(180deg, var(--team), color-mix(in srgb, var(--team) 78%, #000));
   color: var(--team-text);
   /* The notched tail is what makes it read as a banner and not a card. */
@@ -1054,7 +1066,8 @@ table { border-collapse: collapse; width: 100%; }
   border-top: 1px solid rgba(255,255,255,0.28);
 }
 .banner__year {
-  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.2px;
+  padding: 4px 9px; border-radius: 999px;
   background: rgba(0,0,0,0.28);
 }
 .banner__none { font-size: 11px; opacity: 0.6; font-style: italic; }
