@@ -42,6 +42,8 @@ export default function Layout() {
         '--team-text': contrastColor(team.color),
       }}>
       <header className="topbar">
+        <img className="topbar__logo" src="/logo-light.svg" alt="Box Score" />
+
         <div className="topbar__team">
           <TeamBadge teamId={userTeamId} size={40} />
           <div>
