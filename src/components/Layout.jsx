@@ -8,6 +8,7 @@ import { TeamBadge, RankChip, contrastColor, accentColor } from './common.jsx';
 import SeasonView from './SeasonView.jsx';
 import RosterView from './RosterView.jsx';
 import StatsView from './StatsView.jsx';
+import LegacyView from './LegacyView.jsx';
 
 const PHASE_LABEL = {
   REGULAR: 'Regular Season',
@@ -20,6 +21,7 @@ const TABS = [
   ['schedule', 'Schedule'],
   ['roster', 'Roster'],
   ['stats', 'Stats & Rankings'],
+  ['legacy', 'Legacy'],
 ];
 
 export default function Layout() {
@@ -43,7 +45,9 @@ export default function Layout() {
         '--team-text': contrastColor(team.color),
       }}>
       <header className="topbar">
-        <img className="topbar__logo" src="/logo-light.svg" alt="Box Score" />
+        {/* Masked, not an <img>: the file is white ink, and the mask lets it be
+            painted in the team's color once you're inside a program. */}
+        <div className="topbar__logo" role="img" aria-label="Box Score" />
 
         <div className="topbar__team">
           <TeamBadge teamId={userTeamId} size={40} />
@@ -86,6 +90,7 @@ export default function Layout() {
         {activeView === 'schedule' && <SeasonView />}
         {activeView === 'roster' && <RosterView />}
         {activeView === 'stats' && <StatsView />}
+        {activeView === 'legacy' && <LegacyView />}
       </main>
     </div>
   );

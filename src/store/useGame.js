@@ -9,6 +9,7 @@ import {
   teamStrength,
 } from '../engine/simulation.js';
 import { buildRegularSeason, SEASON_START, addDays } from '../engine/schedule.js';
+import { buildSeasonRecord } from '../engine/history.js';
 import {
   seedConferenceTournaments,
   selectNationalField,
@@ -77,8 +78,9 @@ function applyResult(ts, box, teamPts, oppPts, won, isConf, oppStrength) {
   };
 }
 
-// Everything that resets between seasons. `version` and `userTeamId` live
-// outside this so a new season can keep the program and keep re-rendering.
+// Everything that resets between seasons. `version`, `userTeamId` and the
+// dynasty's `history` live outside this so a new season can keep the program,
+// keep its record book, and keep re-rendering.
 const BLANK_SEASON = {
   phase: 'SELECT', // SELECT | REGULAR | CONF_TOURNEY | NATIONAL | DONE
   teamStates: {},
@@ -92,7 +94,7 @@ const BLANK_SEASON = {
   champions: {}, // conference -> teamId
   nationalField: null, // [teamId] seeded
   nationalChampionId: null,
-  activeView: 'schedule', // schedule | roster | stats
+  activeView: 'schedule', // schedule | roster | stats | legacy
   showReveal: false,
   showChampBanner: false,
   revealRandom: false,
@@ -122,6 +124,7 @@ export const useGame = create((set, get) => ({
   userTeamId: null,
   seasonStart: SEASON_START,
   seasonNumber: 1,
+  history: [], // one row per completed season, oldest first — the Legacy tab
   version: 0,
 
   // Settings live outside BLANK_SEASON — they belong to the player, not the season.
@@ -151,6 +154,7 @@ export const useGame = create((set, get) => ({
       userTeamId: teamId,
       teamStates,
       seasonNumber: 1,
+      history: [],
       phase: 'REGULAR',
       showReveal: true,
       revealRandom: random,
@@ -199,7 +203,13 @@ export const useGame = create((set, get) => ({
 
   // Drop the current save entirely and go back to team selection.
   abandonSeason: () =>
-    set({ ...BLANK_SEASON, userTeamId: null, seasonNumber: 1, version: get().version + 1 }),
+    set({
+      ...BLANK_SEASON,
+      userTeamId: null,
+      seasonNumber: 1,
+      history: [],
+      version: get().version + 1,
+    }),
 
   // ---- Rotation management (user team) ----
   // Swap the players occupying two lineup slots (starters or bench).
@@ -399,6 +409,20 @@ export const useGame = create((set, get) => ({
           patch.nationalChampionId = finalGame.result.winnerId;
           patch.phase = 'DONE';
           patch.showChampBanner = true;
+          // Bank the season into the record book while the board is still up —
+          // the offseason is about to wipe every game it was built from.
+          patch.history = [
+            ...s.history,
+            buildSeasonRecord({
+              games,
+              teamStates,
+              userTeamId: s.userTeamId,
+              seasonNumber: s.seasonNumber,
+              champions: s.champions,
+              nationalChampionId: finalGame.result.winnerId,
+              nationalField: s.nationalField,
+            }),
+          ];
         }
       }
 
