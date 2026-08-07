@@ -128,12 +128,14 @@ table { border-collapse: collapse; width: 100%; }
 
 .select__title {
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700;
-  font-size: 34px; letter-spacing: -0.5px; margin: 18px 0 0;
+  font-size: 28px; letter-spacing: -0.5px; margin: 14px 0 0;
   opacity: 0; transition: opacity 700ms ease;
 }
 .select__title.is-in { opacity: 1; }
 
-.select__tag, .select__random { opacity: 0; transition: opacity 600ms ease 200ms; }
+/* Delayed past the hero's 950ms dock so these fade in only once the logo and
+   title have come to rest up top, not while they are still travelling. */
+.select__tag, .select__random { opacity: 0; transition: opacity 600ms ease 950ms; }
 .select__hero.is-docked .select__tag, .select__hero.is-docked .select__random { opacity: 1; }
 .select__tag { color: var(--muted); font-size: 15px; line-height: 1.5; max-width: 560px; margin: 12px auto 0; }
 
