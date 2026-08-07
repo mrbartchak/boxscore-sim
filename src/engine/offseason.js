@@ -60,7 +60,7 @@ const NEXT_CLASS = { FR: 'SO', SO: 'JR', JR: 'SR' };
 
 // Nobody below this rating leaves early — there is no professional money in a
 // 69-overall sophomore, however badly his coach's roster needs the scholarship.
-const PRO_FLOOR = 74;
+const PRO_FLOOR = 80;
 
 // Rating at which a departure is a foregone conclusion.
 const PRO_CEILING = 92;
