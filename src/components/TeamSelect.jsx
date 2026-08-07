@@ -19,14 +19,15 @@ const PRESTIGE_BANDS = [
   { id: '0', label: 'Under 50 · Long shots', min: 0, max: 49 },
 ];
 
-// Intro stages: 0 logo → 1 title → 2 header docks up top → 3 the league appears.
-const STAGE_DELAYS = [900, 2000, 2750];
+// Intro stages: 0 the logo alone, centered → 1 it docks up top, and only once it
+// has landed do the name, tagline and button fade in → 2 the league appears.
+const STAGE_DELAYS = [1000, 1200];
 // Once per page load. Abandoning a program drops you back here, and sitting
 // through the title sequence a second time is just a wait.
 let introPlayed = false;
 
 export default function TeamSelect() {
-  const [stage, setStage] = useState(introPlayed ? 3 : 0);
+  const [stage, setStage] = useState(introPlayed ? 2 : 0);
   const [selected, setSelected] = useState(null);
   const [conf, setConf] = useState(null); // null = the whole league, A-Z
   const [prestige, setPrestige] = useState('any');
@@ -38,7 +39,7 @@ export default function TeamSelect() {
   // the first pass would leave the second pass with the timers cleared and the
   // league stuck behind the title screen forever.
   useEffect(() => {
-    if (stage >= 3) return;
+    if (stage >= 2) return;
     const timers = STAGE_DELAYS.map((ms, i) =>
       setTimeout(() => {
         setStage(i + 1);
@@ -114,10 +115,10 @@ export default function TeamSelect() {
   ));
 
   return (
-    <div className={`select ${stage < 3 ? 'is-intro' : ''}`}>
-      <header className={`select__hero ${stage >= 2 ? 'is-docked' : ''}`}>
+    <div className={`select ${stage < 2 ? 'is-intro' : ''}`}>
+      <header className={`select__hero ${stage >= 1 ? 'is-docked' : ''}`}>
         <img className="select__logo" src="/logo-light.svg" alt="Box Score" />
-        <h1 className={`select__title ${stage >= 1 ? 'is-in' : ''}`}>Hoops Dynasty</h1>
+        <h1 className="select__title">Hoops Dynasty</h1>
         <p className="select__tag">
           Take over a program, set your rotation, and sim from November to the national title —
           then do it again next year with the roster you built.

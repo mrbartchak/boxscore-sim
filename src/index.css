@@ -108,35 +108,40 @@ table { border-collapse: collapse; width: 100%; }
 /* ================= TEAM SELECT ================= */
 .select { max-width: 1150px; margin: 0 auto; padding: 40px 24px 140px; }
 
-/* The title sequence: the hero starts parked near the middle of the window and
-   rides up into a page header once the name has landed. It stays in normal flow
-   the whole time — only a transform moves it — so nothing reflows underneath it. */
+/* The title sequence: the logo alone starts parked dead center of the window and
+   rides up into a page header; everything else in the hero only appears once it
+   has landed. The hero stays in normal flow the whole time — only a transform
+   moves it — so nothing reflows underneath it. The parked offset is measured off
+   the logo's own box (page padding + half its height) so the LOGO is what sits at
+   50vh, not the hero, whose invisible text still occupies space below it. */
 .select.is-intro { height: 100vh; overflow: hidden; padding-bottom: 0; }
 .select__hero {
+  --logo-w: min(430px, 74vw);
+  --logo-h: calc(var(--logo-w) * 0.197); /* logo-light.svg is 1070 × 211 */
   text-align: center; margin-bottom: 40px;
   transition: transform 950ms cubic-bezier(0.22, 0.8, 0.24, 1);
 }
-.select.is-intro .select__hero { transform: translateY(30vh); }
+.select.is-intro .select__hero { transform: translateY(calc(50vh - 40px - var(--logo-h) / 2)); }
 
 .select__logo {
-  display: block; margin: 0 auto; height: auto; width: min(430px, 74vw);
+  display: block; margin: 0 auto; height: auto; width: var(--logo-w);
   animation: logoIn 900ms ease both;
   transition: width 950ms cubic-bezier(0.22, 0.8, 0.24, 1);
 }
-.select__hero.is-docked .select__logo { width: min(290px, 62vw); }
+.select__hero.is-docked .select__logo { width: min(430px, 74vw); }
 @keyframes logoIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
 .select__title {
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700;
   font-size: 28px; letter-spacing: -0.5px; margin: 14px 0 0;
-  opacity: 0; transition: opacity 700ms ease;
 }
-.select__title.is-in { opacity: 1; }
 
-/* Delayed past the hero's 950ms dock so these fade in only once the logo and
-   title have come to rest up top, not while they are still travelling. */
-.select__tag, .select__random { opacity: 0; transition: opacity 600ms ease 950ms; }
-.select__hero.is-docked .select__tag, .select__hero.is-docked .select__random { opacity: 1; }
+/* Everything under the logo. Delayed past the hero's 950ms dock so the intro is
+   the logo and nothing else until it has come to rest up top. */
+.select__title, .select__tag, .select__random { opacity: 0; transition: opacity 600ms ease 950ms; }
+.select__hero.is-docked .select__title,
+.select__hero.is-docked .select__tag,
+.select__hero.is-docked .select__random { opacity: 1; }
 .select__tag { color: var(--muted); font-size: 15px; line-height: 1.5; max-width: 560px; margin: 12px auto 0; }
 
 .select__body { opacity: 0; transition: opacity 600ms ease; }
@@ -160,7 +165,7 @@ table { border-collapse: collapse; width: 100%; }
 
 .filterbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 26px; padding-bottom: 22px; border-bottom: 1px solid var(--border);
+  margin-bottom: 22px; padding-bottom: 16px;
 }
 .filterbar__filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .filterbar .select-input { height: 34px; border-radius: 6px; }
@@ -181,7 +186,7 @@ table { border-collapse: collapse; width: 100%; }
 }
 .az__letter {
   background: none; border: none; color: var(--faint); border-radius: 5px;
-  padding: 1px 0; font-size: 11px; font-weight: 800; line-height: 1.25;
+  padding: 4px 0px; font-size: 14px; font-weight: 800; line-height: 1.25;
   transition: color 0.12s, background 0.12s;
 }
 .az__letter:hover:not(:disabled) { color: #111; background: var(--gold); }
