@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { useGame } from '../store/useGame.js';
 import { TEAMS_BY_ID } from '../data/teams.js';
 import { conferenceStandings } from '../engine/rankings.js';
-import { NATIONAL_ROUND_NAMES, CONF_ROUND_NAMES, REGIONS } from '../engine/tournament.js';
+import {
+  NATIONAL_ROUND_NAMES,
+  REGIONS,
+  confRoundNames,
+  confTourneyFormat,
+  formatRounds,
+  seedEntryRound,
+} from '../engine/tournament.js';
+import { fieldSize } from '../data/conferenceTournaments.js';
 import { TeamBadge, useScoreRoll } from './common.jsx';
 import { ORD } from './Interstitials.jsx';
 import SelectionSunday from './SelectionSunday.jsx';
@@ -127,11 +135,21 @@ export function ConferenceTournamentView() {
   );
   const rounds = [];
   confGames.forEach((g) => (rounds[g.round] ||= []).push(g));
+  // Byes mean a round is not the same height as the one beside it; `bracketPos`
+  // is the order that keeps each game next to the one it feeds.
+  rounds.forEach((r) => r.sort((a, b) => a.bracketPos - b.bracketPos));
   const complete = confGames.length > 0 && confGames.every((g) => g.played);
 
   const ts = teamStates[userTeamId];
-  const confFinish = conferenceStandings(teamStates, conf).findIndex((x) => x.teamId === userTeamId) + 1;
-  const status = userStatus(confGames, userTeamId, CONF_ROUND_NAMES);
+  const standings = conferenceStandings(teamStates, conf);
+  const confFinish = standings.findIndex((x) => x.teamId === userTeamId) + 1;
+
+  // The bracket is whatever shape this conference actually plays.
+  const entries = confTourneyFormat(conf, standings.length);
+  const field = fieldSize(entries);
+  const roundNames = confRoundNames(formatRounds(entries));
+  const opensIn = seedEntryRound(entries, confFinish);
+  const status = userStatus(confGames, userTeamId, roundNames);
 
   return (
     <div className="tourney">
@@ -140,7 +158,8 @@ export function ConferenceTournamentView() {
           <h2 className="tourney__title">{conf} Tournament</h2>
           <div className="tourney__sub">
             {ts.record.w}-{ts.record.l} overall · {ORD(confFinish)} in the {conf}
-            {confFinish <= 8 && <> · No. {confFinish} seed</>}
+            {confFinish <= field && <> · No. {confFinish} seed</>}
+            {opensIn > 0 && <> · opens in the {roundNames[opensIn]}</>}
           </div>
         </div>
         <TourneyControls complete={complete} />
@@ -150,14 +169,14 @@ export function ConferenceTournamentView() {
 
       {!status && (
         <p className="muted">
-          {ORD(confFinish)} place missed the eight-team field — you're watching this one.
+          {ORD(confFinish)} place missed the {field}-team field — you're watching this one.
         </p>
       )}
 
       <div className="bracket">
         {rounds.map((round, r) => (
           <div key={r} className="bracket__round">
-            <div className="bracket__roundname">{CONF_ROUND_NAMES[r]}</div>
+            <div className="bracket__roundname">{roundNames[r]}</div>
             {round.map((g) => <Matchup key={g.id} game={g} userTeamId={userTeamId} />)}
           </div>
         ))}

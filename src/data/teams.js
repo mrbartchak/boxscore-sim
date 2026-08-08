@@ -5,8 +5,8 @@
 //
 // Conference sizes vary from 7 (WAC) to 18 (ACC, Big Ten). Two parts of the
 // engine care: `buildConferenceSchedule` gives every team 18 league games
-// regardless of size, and `seedConferenceTournaments` seeds byes into an 8-team
-// bracket when a league has fewer than 8 members.
+// regardless of size, and every league runs its own real tournament format —
+// field size and byes — out of `conferenceTournaments.js`.
 
 const RAW = {
   ACC: [

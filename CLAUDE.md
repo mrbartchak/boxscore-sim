@@ -51,7 +51,12 @@ data/  →  engine/  →  store/  →  components/
 - `engine/schedule.js` — `buildRegularSeason(teams)` builds all 5,475 games, date
   helpers, `SEASON_START`. See "The schedule" below.
 - `engine/rankings.js` — `powerRating`, `rankTeams`, `conferenceStandings`, `leaderboard`.
-- `engine/tournament.js` — `seedConferenceTournaments()`, `selectNationalField()`, `buildNationalBracket()` (4 regions × 16), `buildSingleElim()`.
+- `data/conferenceTournaments.js` — the field size and bye structure each of the
+  31 leagues actually plays, from the 2026 brackets. Facts; see "Conference
+  tournaments" below for the `entries` notation.
+- `engine/tournament.js` — `seedConferenceTournaments()`, `buildStaggered()`,
+  `confRoundNames()`, `selectNationalField()`, `buildNationalBracket()`
+  (4 regions × 16), `buildSingleElim()`.
 - `engine/history.js` — `buildSeasonRecord()`, the one row the record book keeps
   per completed season. See "The record book" below.
 - `store/useGame.js` — see below.
@@ -234,6 +239,48 @@ Known residual: after a decade the blue-blood band sits ~2 points below a fresh
 league's, because the pros drain the best underclassmen and generation never does.
 That is arguably the more realistic of the two.
 
+### Conference tournaments — every league runs its own real format
+Not a 64-team bracket in miniature. A league seats 7, 13 or 18 teams and buys
+its best programs rest with byes, so the brackets are **staggered**: a round
+holds whoever survived the last one plus whoever enters at it, and the whole
+thing runs as many rounds as that takes (two for Ivy Madness, seven for the Sun
+Belt stepladder). `data/conferenceTournaments.js` describes each one as
+`entries` — how many NEW teams enter at each round, worst seeds first:
+
+```
+[8]        8-team bracket, everyone opens in the quarterfinals   (MAC, MEAC)
+[8, 4, 4]  all 16: 9-16 open, 5-8 bye, 1-4 double bye            (SEC, Big 12)
+[6, 5, 4]  15 of 18, three tiers of byes                         (ACC)
+[4, 2, 2]  a stepladder — two seeds join at every rung            (OVC, Big West)
+```
+
+The field is the sum, the round count falls out of the halving, and a team
+entering at round r has r byes. **The rounds must stay even** — an odd round
+means a bye nobody earned, so `assertFormats` refuses it at import.
+
+Three rules make it work:
+- **Pairing is best-remaining vs worst-remaining**, where a game's "seed" is the
+  best seed that can come out of it. That one rule reproduces 5v12 and 8v9 in a
+  16-team field AND the 8 seed drawing the 9/12 winner on a stepladder — do not
+  replace it with a fixed line order.
+- **Every tournament ends on the same day.** Rounds are a day apart and the
+  finals are aligned, so longer brackets simply tip off earlier in the week.
+  `lastConfDate` is that shared final date, which is what the NATIONAL phase
+  counts forward from. The consequence to remember: **the leagues no longer
+  share a calendar**, so the next date with a conference tournament game on it
+  is usually somebody else's round. `simulateRound` therefore targets the next
+  game in the USER'S conference — targeting the league-wide next date (which is
+  what it used to do) leaves the bracket on screen untouched for two presses
+  while the Sun Belt plays its opening rounds.
+- **`bracketPos`, not insertion order, is the printed order.** Pairing by seed
+  builds a round as 1v8, 2v7, 3v6, 4v5, but 1v8 and 4v5 feed the same next game —
+  read top to bottom the tree crosses itself. `orderForDisplay` walks back from
+  the final so each game sits beside the one it feeds; the UI sorts on it.
+
+`confTourneyFormat(conf, teamCount)` is what the UI asks before a bracket
+exists (the season summary has to name the field you made or missed), and it
+also trims a format if a league is ever smaller than the one it was written for.
+
 ### The record book (`engine/history.js` → the Legacy tab)
 `store.history` is one `buildSeasonRecord()` row per COMPLETED season, oldest
 first. Like `userTeamId` and `seasonNumber` it lives **outside `BLANK_SEASON`**,
@@ -352,6 +399,7 @@ Deliberate omission: the real event is 68 with a First Four play-in. This is the
 - **Recruiting is not a decision** — `recruitClass` hands you a class sized to your
   departures at your prestige level. There is no board, no pitch, no competition.
 - Drag-and-drop uses native HTML5 DnD → **mouse only, not touch**.
-- Conference tournaments are 8 teams for every conference regardless of size —
-  a 7-team league seeds all of its members and gives the 1 seed a bye, but an
-  18-team league still leaves half its membership home.
+- Conference tournament formats are the real ones, but they are **fixed
+  brackets**: the Horizon League reseeds between rounds in real life and we
+  play its bracket straight through. Formats are also static — a league that
+  changes its field size in real life has to be edited by hand.

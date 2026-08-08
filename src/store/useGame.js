@@ -285,10 +285,19 @@ export const useGame = create((set, get) => ({
   // stops itself at the summary.
   simulateSeason: () => get()._runSim(() => false),
 
-  // Simulate the next round of the current tournament phase (one slate of games).
+  // Simulate the next round of the tournament ON SCREEN. Conference tournaments
+  // no longer share a calendar — the leagues that need seven rounds tip off days
+  // before the ones that need three — so the next date with a game on it is
+  // usually somebody else's first round, and stopping there would leave the
+  // bracket the user is watching untouched. Round means a round of THEIR
+  // bracket; the rest of the league still plays through on the way there.
   simulateRound: () => {
-    const phase = get().phase;
-    const target = nextPhaseGameDate(get(), phase);
+    const s = get();
+    const { phase, userTeamId } = s;
+    const conf = phase === 'CONF_TOURNEY' && userTeamId ? TEAMS_BY_ID[userTeamId].conference : null;
+    const target =
+      (conf && nextPhaseGameDate(s, phase, (g) => g.conference === conf)) ??
+      nextPhaseGameDate(s, phase); // their bracket is done — carry the phase out
     if (!target) return;
     get()._runSim((st) => st.currentDate >= target || st.phase !== phase);
   },
@@ -459,11 +468,12 @@ function writeSlot(rot, slot, playerId) {
   else rot.bench[Number(key)] = playerId;
 }
 
-// Earliest date of an unplayed, ready-to-play game in the given phase.
-function nextPhaseGameDate(state, phase) {
+// Earliest date of an unplayed, ready-to-play game in the given phase, optionally
+// narrowed to the bracket the user is actually looking at.
+function nextPhaseGameDate(state, phase, match) {
   let min = null;
   Object.values(state.games).forEach((g) => {
-    if (g.phase === phase && !g.played && g.homeId && g.awayId) {
+    if (g.phase === phase && !g.played && g.homeId && g.awayId && (!match || match(g))) {
       if (!min || g.date < min) min = g.date;
     }
   });

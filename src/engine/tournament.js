@@ -3,6 +3,11 @@
 // the same day-by-day simulation loop can drive them.
 
 import { CONFERENCES, TEAMS_BY_ID } from '../data/teams.js';
+import {
+  CONF_TOURNEY_FORMATS,
+  DEFAULT_FORMAT,
+  fieldSize,
+} from '../data/conferenceTournaments.js';
 import { addDays } from './schedule.js';
 import { conferenceStandings, powerRating, ratingContext } from './rankings.js';
 
@@ -32,7 +37,8 @@ export const REGION_LINE_ORDER = [1, 16, 8, 9, 5, 12, 4, 13, 6, 11, 3, 14, 7, 10
 //
 // `teamsBySeed` may be SHORTER than the bracket, in which case the top seeds
 // draw byes: their first-round game is never created and they are placed
-// straight into round two, exactly as a small conference tournament does it.
+// straight into round two. (Conference tournaments no longer come through here —
+// their brackets are staggered, not powers of two. See `buildStaggered`.)
 export function buildSingleElim(teamsBySeed, startDate, gapDays, phase, lineOrder) {
   const size = 1 << Math.ceil(Math.log2(Math.max(2, teamsBySeed.length)));
   const order = lineOrder && lineOrder.length === size ? lineOrder : seedOrder(size);
@@ -112,25 +118,180 @@ export function buildSingleElim(teamsBySeed, startDate, gapDays, phase, lineOrde
   return { games, lastDate: date, finalGameId: prevRound[0].game.id };
 }
 
-// One 8-team single-elim tournament per conference (top 8 by conf record).
+// ---------- Conference tournaments ----------
+//
+// Conference brackets are not the clean powers of two the national bracket is.
+// A league seats 7, 13, 15 teams and buys its best programs rest by giving them
+// byes — so a round holds however many teams the last round left plus whoever
+// enters at it, and the bracket runs as many rounds as that takes. That shape is
+// described by `entries` (see `data/conferenceTournaments.js`); this is the
+// builder for it.
+
+// How many rounds a format takes to crown a champion.
+export function formatRounds(entries) {
+  let alive = 0;
+  let rounds = 0;
+  for (let r = 0; ; r++) {
+    alive += entries[r] ?? 0;
+    if (alive <= 1) return rounds;
+    alive = Math.ceil(alive / 2);
+    rounds++;
+  }
+}
+
+// Trim a format to a league that is smaller than the one it was written for.
+// The field can only ever lose its worst seeds, so teams come off the front —
+// the round the lowest seeds enter at.
+function fitFormat(entries, teamCount) {
+  const fitted = [...entries];
+  let over = fieldSize(fitted) - teamCount;
+  for (let r = 0; over > 0 && r < fitted.length; r++) {
+    const cut = Math.min(fitted[r], over);
+    fitted[r] -= cut;
+    over -= cut;
+  }
+  while (fitted.length > 1 && fitted[0] === 0) fitted.shift();
+  return fitted;
+}
+
+// The format a conference will actually play, given how many members it has.
+// The UI asks this before the bracket exists — the season summary has to name
+// the field you either made or missed.
+export function confTourneyFormat(conf, teamCount) {
+  return fitFormat(CONF_TOURNEY_FORMATS[conf] ?? DEFAULT_FORMAT, teamCount);
+}
+
+// Which round a seed opens in — 0 for the teams who play the first day, higher
+// for the byes. What a fan actually wants to know off the standings.
+export function seedEntryRound(entries, seed) {
+  let lowest = fieldSize(entries);
+  for (let r = 0; r < entries.length; r++) {
+    const top = lowest - entries[r] + 1;
+    if (seed >= top && seed <= lowest) return r;
+    lowest = top - 1;
+  }
+  return null; // outside the field
+}
+
+// Build a bracket from an entry schedule. `teamsBySeed[0]` is the 1 seed.
+//
+// Within a round the pairing is always best-remaining against worst-remaining,
+// where a game's "seed" is the best seed that can come out of it. That single
+// rule reproduces every real bracket: 5v12 and 8v9 in a 16-team field, and the
+// 8 seed drawing the 9/12 winner on a stepladder.
+export function buildStaggered(teamsBySeed, entries, startDate, gapDays, phase) {
+  const games = [];
+  let alive = []; // { seed, teamId } for a team, or { seed, game } for a winner
+  let date = startDate;
+  let lastDate = startDate;
+
+  // Byes go to the top of the standings, so a round's entrants are the WORST
+  // seeds left: the first round seats the bottom of the field and the seed
+  // numbers count back up from there.
+  let lowest = teamsBySeed.length;
+
+  for (let round = 0; ; round++) {
+    const entering = Math.min(entries[round] ?? 0, lowest);
+    for (let seed = lowest - entering + 1; seed <= lowest; seed++) {
+      alive.push({ seed, teamId: teamsBySeed[seed - 1] });
+    }
+    lowest -= entering;
+    if (alive.length <= 1) break;
+
+    alive.sort((a, b) => a.seed - b.seed);
+    const next = [];
+    let list = alive;
+    // The real formats never leave an odd round; a field trimmed to a smaller
+    // league can, and then the top seed sits the round out.
+    if (list.length % 2 === 1) {
+      next.push(list[0]);
+      list = list.slice(1);
+    }
+
+    for (let i = 0, j = list.length - 1; i < j; i++, j--) {
+      const top = list[i];
+      const bot = list[j];
+      const g = {
+        id: `x${_tid++}`,
+        phase,
+        round,
+        date,
+        neutral: true,
+        homeId: top.teamId ?? null,
+        awayId: bot.teamId ?? null,
+        seedHome: top.teamId ? top.seed : null,
+        seedAway: bot.teamId ? bot.seed : null,
+        played: false,
+        result: null,
+        nextGameId: null,
+        nextSlot: null,
+      };
+      if (top.game) { top.game.nextGameId = g.id; top.game.nextSlot = 'home'; }
+      if (bot.game) { bot.game.nextGameId = g.id; bot.game.nextSlot = 'away'; }
+      games.push(g);
+      next.push({ seed: top.seed, game: g });
+    }
+
+    alive = next;
+    lastDate = date;
+    date = addDays(date, gapDays);
+  }
+
+  orderForDisplay(games);
+  return { games, lastDate, finalGameId: alive[0].game.id };
+}
+
+// Bracket order for printing. Pairing by seed builds a round as 1v8, 2v7, 3v6,
+// 4v5 — correct matchups, but 1v8 and 4v5 are the two that feed the same next
+// game, so read top to bottom the tree crosses over itself. Walking back from
+// the final puts every game beside the one it feeds, which is the order a
+// printed bracket uses; `bracketPos` is what the UI sorts a round on.
+function orderForDisplay(games) {
+  const feeders = {};
+  games.forEach((g) => {
+    if (g.nextGameId) (feeders[g.nextGameId] ||= { home: null, away: null })[g.nextSlot] = g;
+  });
+
+  let level = games.filter((g) => !g.nextGameId);
+  while (level.length) {
+    level.forEach((g, i) => (g.bracketPos = i));
+    level = level.flatMap((g) => {
+      const f = feeders[g.id];
+      return f ? [f.home, f.away].filter(Boolean) : [];
+    });
+  }
+}
+
+// One tournament per conference, each in its own real format. They all end on
+// the same day — championship Saturday — so the longer brackets simply tip off
+// earlier in the week, exactly as they do in March.
 export function seedConferenceTournaments(teamStates, startDate) {
   const allGames = [];
   const finals = {}; // conference -> final game id
-  let lastDate = startDate;
+  const formats = {}; // conference -> the entry schedule actually used
 
   for (const conf of CONFERENCES) {
-    const standings = conferenceStandings(teamStates, conf).slice(0, 8);
+    const teamCount = conferenceStandings(teamStates, conf).length;
+    formats[conf] = fitFormat(CONF_TOURNEY_FORMATS[conf] ?? DEFAULT_FORMAT, teamCount);
+  }
+  const maxRounds = Math.max(...CONFERENCES.map((c) => formatRounds(formats[c])));
+  const lastDate = addDays(startDate, maxRounds - 1);
+
+  for (const conf of CONFERENCES) {
+    const entries = formats[conf];
+    const standings = conferenceStandings(teamStates, conf).slice(0, fieldSize(entries));
     const teamsBySeed = standings.map((ts) => ts.teamId);
-    const { games, lastDate: d, finalGameId } = buildSingleElim(
+    const confStart = addDays(lastDate, -(formatRounds(entries) - 1));
+    const { games, finalGameId } = buildStaggered(
       teamsBySeed,
-      startDate,
-      2,
+      entries,
+      confStart,
+      1,
       'CONF_TOURNEY'
     );
     games.forEach((g) => (g.conference = conf));
     allGames.push(...games);
     finals[conf] = finalGameId;
-    lastDate = d;
   }
 
   return { games: allGames, finals, lastDate };
@@ -313,4 +474,17 @@ export const NATIONAL_ROUND_NAMES = [
   'Championship',
 ];
 
-export const CONF_ROUND_NAMES = ['Quarterfinals', 'Semifinals', 'Final'];
+// Conference brackets run anywhere from two rounds (Ivy Madness) to seven (the
+// Sun Belt stepladder), so the round names are counted BACK from the title game
+// the way every league names them: the last three are always the quarters, the
+// semis and the final, and whatever comes before that is a numbered round.
+const ORDINAL_ROUNDS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
+
+export function confRoundNames(rounds) {
+  const tail = ['Quarterfinals', 'Semifinals', 'Championship'].slice(Math.max(0, 3 - rounds));
+  const lead = Array.from(
+    { length: Math.max(0, rounds - tail.length) },
+    (_, i) => `${ORDINAL_ROUNDS[i] ?? i + 1} Round`
+  );
+  return [...lead, ...tail];
+}

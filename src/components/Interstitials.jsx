@@ -6,6 +6,13 @@ import { useGame } from '../store/useGame.js';
 import { TEAMS, TEAMS_BY_ID } from '../data/teams.js';
 import { rankTeams, conferenceStandings } from '../engine/rankings.js';
 import { seasonAverages } from '../engine/players.js';
+import {
+  confRoundNames,
+  confTourneyFormat,
+  formatRounds,
+  seedEntryRound,
+} from '../engine/tournament.js';
+import { fieldSize } from '../data/conferenceTournaments.js';
 import { TeamBadge, contrastColor, accentColor } from './common.jsx';
 
 export const ORD = (n) => {
@@ -40,8 +47,14 @@ export function SeasonSummary() {
   const passer = leaderOf(ts.players, 'apg');
   const boards = leaderOf(ts.players, 'rpg');
 
-  // The seed the conference tournament will hand you (top 8 make the field).
-  const seed = confFinish <= 8 ? confFinish : null;
+  // The seed the conference tournament will hand you — every league runs its own
+  // format, so how many make the field (and how many byes the seed is worth)
+  // depends on which one you are in.
+  const entries = confTourneyFormat(team.conference, standings.length);
+  const field = fieldSize(entries);
+  const seed = confFinish <= field ? confFinish : null;
+  const opensIn = seed ? seedEntryRound(entries, seed) : null;
+  const roundNames = confRoundNames(formatRounds(entries));
 
   return (
     <div className="gate" style={{ '--team': team.color, '--team-accent': accentColor(team.color), '--team-text': contrastColor(team.color) }}>
@@ -76,13 +89,17 @@ export function SeasonSummary() {
         <div className="gate__note">
           {seed ? (
             <>
-              You've earned the <strong>No. {seed} seed</strong> in the {team.conference} tournament.
-              Win it and the automatic bid is yours.
+              You've earned the <strong>No. {seed} seed</strong> in the {field}-team{' '}
+              {team.conference} tournament
+              {opensIn > 0 ? (
+                <> — a bye to the {roundNames[opensIn]}</>
+              ) : null}
+              . Win it and the automatic bid is yours.
             </>
           ) : (
             <>
-              {ORD(confFinish)} place misses the {team.conference} tournament's eight-team field — your
-              season ends here unless the committee is feeling generous.
+              {ORD(confFinish)} place misses the {team.conference} tournament's {field}-team field —
+              your season ends here unless the committee is feeling generous.
             </>
           )}
         </div>
