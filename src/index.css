@@ -332,7 +332,7 @@ table { border-collapse: collapse; width: 100%; }
    through to the trough behind them. */
 .navrail__logo {
   flex: 0 0 auto; height: 36px; aspect-ratio: 1070 / 211; margin: -12px 0;
-  background: var(--muted);
+  background: var(--text);
   -webkit-mask: url(/logo-light.svg) no-repeat center / contain;
   mask: url(/logo-light.svg) no-repeat center / contain;
 }
